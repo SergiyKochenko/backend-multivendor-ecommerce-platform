@@ -25,3 +25,11 @@ Initial backend setup completed:
 
 ---
 Feel free to expand this README as the project grows.
+
+## Changelog
+
+### [Backend Setup]
+- Project initialized with Node.js
+- Added `nodemon` as a development dependency
+- Created initial project structure
+- Initial commit to version control
