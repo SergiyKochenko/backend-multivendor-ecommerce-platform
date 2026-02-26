@@ -28,6 +28,12 @@ Feel free to expand this README as the project grows.
 
 ## Changelog
 
+
+### [Admin Login Page Setup]
+- Implemented admin login API endpoint
+- Added authentication logic and password validation
+- Integrated token creation and cookie handling for admin login
+
 ### [Backend Setup]
 - Project initialized with Node.js
 - Added `nodemon` as a development dependency
