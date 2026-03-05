@@ -36,6 +36,42 @@ class authControllers{
 
     }
 
+    // End Method
+
+    seller_login = async(req,res) => {
+        const {email,password} = req.body
+        try {
+            const seller = await sellerModel.findOne({email}).select('+password')
+            // console.log(admin)
+            if (seller) {
+                const match = await bcrpty.compare(password, seller.password)
+                // console.log(match)
+                if (match) {
+                    const token = await createToken({
+                        id : seller.id,
+                        role : seller.role
+                    })
+                    res.cookie('accessToken', token, {
+                        httpOnly: true,
+                        secure: true,
+                        sameSite: 'none',
+                        maxAge: 7 * 24 * 60 * 60 * 1000
+                    }) 
+                    responseReturn(res,200,{token,message: "Login Success"})
+                } else {
+                    responseReturn(res,404,{error: "Password Wrong"})
+                }
+ 
+                 
+            } else {
+                responseReturn(res,404,{error: "Email not Found"})
+            }
+            
+        } catch (error) {
+            responseReturn(res,500,{error: error.message})
+        }
+ 
+    }
     // End Method 
 
 
