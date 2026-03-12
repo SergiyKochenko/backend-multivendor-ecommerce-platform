@@ -24,6 +24,17 @@ class queryProducts {
     return this;
   };
 
+  searchQuery = () => {
+    this.products = this.query.searchValue
+      ? this.products.filter(
+          (p) =>
+            p.name.toUpperCase().indexOf(this.query.searchValue.toUpperCase()) >
+            -1,
+        )
+      : this.products;
+    return this;
+  };
+
   priceQuery = () => {
     const { lowPrice, highPrice } = this.query;
     if (lowPrice === undefined && highPrice === undefined) return this;
