@@ -18,12 +18,13 @@ app.use(cookieParser());
 
 app.use("/api/home", require("./routes/home/homeRoutes"));
 app.use("/api", require("./routes/authRoutes"));
+app.use("/api", require("./routes/home/cardRoutes"));
 app.use("/api", require("./routes/dashboard/categoryRoutes"));
 app.use("/api", require("./routes/dashboard/productRoutes"));
 app.use("/api", require("./routes/dashboard/sellerRoutes"));
 app.use("/api", require("./routes/home/customerAuthRoutes"));
 
-app.get("/", (req, res) => res.send("Server is connected.."));
+app.get("/", (req, res) => res.send("Hello Server"));
 const port = process.env.PORT;
 dbConnect();
 app.listen(port, () => console.log(`Server is running on port ${port}`));
