@@ -146,5 +146,42 @@ class cardController {
     }
   };
   // End Method
+
+  delete_card_products = async (req, res) => {
+    const { card_id } = req.params;
+    try {
+      await cardModel.findByIdAndDelete(card_id);
+      responseReturn(res, 200, { message: "Product Remove Successfully" });
+    } catch (error) {
+      console.log(error.message);
+    }
+  };
+  // End Method
+
+  quantity_inc = async (req, res) => {
+    const { card_id } = req.params;
+    try {
+      const product = await cardModel.findById(card_id);
+      const { quantity } = product;
+      await cardModel.findByIdAndUpdate(card_id, { quantity: quantity + 1 });
+      responseReturn(res, 200, { message: "Qty Updated" });
+    } catch (error) {
+      console.log(error.message);
+    }
+  };
+  // End Method
+
+  quantity_dec = async (req, res) => {
+    const { card_id } = req.params;
+    try {
+      const product = await cardModel.findById(card_id);
+      const { quantity } = product;
+      await cardModel.findByIdAndUpdate(card_id, { quantity: quantity - 1 });
+      responseReturn(res, 200, { message: "Qty Updated" });
+    } catch (error) {
+      console.log(error.message);
+    }
+  };
+  // End Method
 }
 module.exports = new cardController();
