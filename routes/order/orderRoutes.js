@@ -6,5 +6,9 @@ router.get(
   "/home/coustomer/get-dashboard-data/:userId",
   orderController.get_customer_dashboard_data,
 );
+router.get(
+  "/home/coustomer/get-orders/:customerId/:status",
+  orderController.get_orders,
+);
 
 module.exports = router;
