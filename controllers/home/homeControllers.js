@@ -101,7 +101,6 @@ class homeControllers {
       const products = await productModel.find({}).sort({
         createdAt: -1,
       });
-
       const totalProduct = new queryProducts(products, req.query)
         .categoryQuery()
         .ratingQuery()
@@ -113,8 +112,8 @@ class homeControllers {
       const result = new queryProducts(products, req.query)
         .categoryQuery()
         .ratingQuery()
-        .searchQuery()
         .priceQuery()
+        .searchQuery()
         .sortByPrice()
         .skip()
         .limit()
@@ -124,6 +123,54 @@ class homeControllers {
         products: result,
         totalProduct,
         parPage,
+      });
+    } catch (error) {
+      console.log(error.message);
+    }
+  };
+  // end method
+
+  product_details = async (req, res) => {
+    const { slug } = req.params;
+    try {
+      const product = await productModel.findOne({ slug });
+
+      const relatedProducts = await productModel
+        .find({
+          $and: [
+            {
+              _id: {
+                $ne: product.id,
+              },
+            },
+            {
+              category: {
+                $eq: product.category,
+              },
+            },
+          ],
+        })
+        .limit(12);
+      const moreProducts = await productModel
+        .find({
+          $and: [
+            {
+              _id: {
+                $ne: product.id,
+              },
+            },
+            {
+              sellerId: {
+                $eq: product.sellerId,
+              },
+            },
+          ],
+        })
+        .limit(3);
+      responseReturn(res, 200, {
+        product,
+        relatedProducts,
+        moreProducts,
       });
     } catch (error) {
       console.log(error.message);
