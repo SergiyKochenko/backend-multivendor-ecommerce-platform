@@ -29,14 +29,12 @@ class authControllers {
           responseReturn(res, 404, { error: "Password Wrong" });
         }
       } else {
-        // console.log(false)
         responseReturn(res, 404, { error: "Email not Found" });
       }
     } catch (error) {
       responseReturn(res, 500, { error: error.message });
     }
   };
-
   // End Method
 
   seller_login = async (req, res) => {
@@ -97,7 +95,6 @@ class authControllers {
       responseReturn(res, 500, { error: "Internal Server Error" });
     }
   };
-
   // End Method
 
   getUser = async (req, res) => {
@@ -114,9 +111,7 @@ class authControllers {
     } catch (error) {
       responseReturn(res, 500, { error: "Internal Server Error" });
     }
-  };
-
-  // End getUser Method
+  }; // End getUser Method
 
   profile_image_upload = async (req, res) => {
     const { id } = req;
@@ -177,6 +172,18 @@ class authControllers {
     }
   };
   // End Method
-}
 
+  logout = async (req, res) => {
+    try {
+      res.cookie("accessToken", null, {
+        expires: new Date(Date.now()),
+        httpOnly: true,
+      });
+      responseReturn(res, 200, { message: "logout Success" });
+    } catch (error) {
+      responseReturn(res, 500, { error: error.message });
+    }
+  };
+  // End Method
+}
 module.exports = new authControllers();
