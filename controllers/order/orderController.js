@@ -263,6 +263,68 @@ class orderController {
     }
   };
   // End Method
+
+  get_seller_orders = async (req, res) => {
+    const { sellerId } = req.params;
+    let { page, searchValue, parPage } = req.query;
+    page = parseInt(page);
+    parPage = parseInt(parPage);
+
+    const skipPage = parPage * (page - 1);
+
+    try {
+      if (searchValue) {
+      } else {
+        const orders = await authOrderModel
+          .find({
+            sellerId,
+          })
+          .skip(skipPage)
+          .limit(parPage)
+          .sort({ createdAt: -1 });
+        const totalOrder = await authOrderModel
+          .find({
+            sellerId,
+          })
+          .countDocuments();
+        responseReturn(res, 200, { orders, totalOrder });
+      }
+    } catch (error) {
+      console.log("get seller Order error" + error.message);
+      responseReturn(res, 500, { message: "internal server error" });
+    }
+  };
+  // End Method
+
+  get_seller_order = async (req, res) => {
+    const { orderId } = req.params;
+
+    try {
+      const order = await authOrderModel.findById(orderId);
+      responseReturn(res, 200, { order });
+    } catch (error) {
+      console.log("get seller details error" + error.message);
+    }
+  };
+  // End Method
+
+  seller_order_status_update = async (req, res) => {
+    const { orderId } = req.params;
+    const { status } = req.body;
+
+    try {
+      await authOrderModel.findByIdAndUpdate(orderId, {
+        delivery_status: status,
+      });
+      responseReturn(res, 200, {
+        message: "order status updated successfully",
+      });
+    } catch (error) {
+      console.log("get seller Order error" + error.message);
+      responseReturn(res, 500, { message: "internal server error" });
+    }
+  };
+  // End Method
 }
 
 module.exports = new orderController();
