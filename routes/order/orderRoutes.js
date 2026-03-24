@@ -17,6 +17,7 @@ router.get(
 );
 
 router.post("/order/create-payment", orderController.create_payment);
+router.get("/order/confirm/:orderId", orderController.order_confirm);
 
 // Admin
 router.get("/admin/orders", orderController.get_admin_orders);
