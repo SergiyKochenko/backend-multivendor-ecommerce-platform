@@ -24,5 +24,15 @@ router.post(
   authMiddleware,
   paymentController.withdrowal_request,
 );
+router.get(
+  "/payment/request",
+  authMiddleware,
+  paymentController.get_payment_request,
+);
+router.post(
+  "/payment/request-confirm",
+  authMiddleware,
+  paymentController.payment_request_confirm,
+);
 
 module.exports = router;
