@@ -1,4 +1,4 @@
-const sellerController = require("../../controllers/dasboard/sellerController");
+const sellerController = require("../../controllers/dashboard/sellerController");
 const { authMiddleware } = require("../../middlewares/authMiddleware");
 const router = require("express").Router();
 
