@@ -121,8 +121,16 @@ class productController {
   // End Method
 
   product_update = async (req, res) => {
-    let { name, description, stock, price, discount, brand, productId } =
-      req.body;
+    let {
+      name,
+      description,
+      stock,
+      price,
+      category,
+      discount,
+      brand,
+      productId,
+    } = req.body;
     name = name.trim();
     const slug = name.split(" ").join("-");
 
@@ -132,6 +140,7 @@ class productController {
         description,
         stock,
         price,
+        category,
         discount,
         brand,
         productId,
