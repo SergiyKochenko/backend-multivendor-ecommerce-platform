@@ -19,7 +19,8 @@ class productController {
         shopName,
         brand,
       } = field;
-      const { images } = files;
+
+      let { images } = files;
       name = name.trim();
       const slug = name.split(" ").join("-");
 
@@ -32,11 +33,17 @@ class productController {
 
       try {
         let allImageUrl = [];
+
+        if (!Array.isArray(images)) {
+          images = [images];
+        }
+
         for (let i = 0; i < images.length; i++) {
           const result = await cloudinary.uploader.upload(images[i].filepath, {
             folder: "products",
           });
-          allImageUrl = [...allImageUrl, result.url];
+
+          allImageUrl.push(result.url);
         }
 
         await productModel.create({
