@@ -22,7 +22,10 @@ class authControllers {
             role: admin.role,
           });
           res.cookie("accessToken", token, {
-            expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            httpOnly: true,
+            secure: true,
+            sameSite: "none",
+            maxAge: 7 * 24 * 60 * 60 * 1000,
           });
           responseReturn(res, 200, { token, message: "Login Success" });
         } else {
@@ -51,7 +54,10 @@ class authControllers {
             role: seller.role,
           });
           res.cookie("accessToken", token, {
-            expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            httpOnly: true,
+            secure: true,
+            sameSite: "none",
+            maxAge: 7 * 24 * 60 * 60 * 1000,
           });
           responseReturn(res, 200, { token, message: "Login Success" });
         } else {
@@ -185,5 +191,27 @@ class authControllers {
     }
   };
   // End Method
+
+  // Change Password
+  change_password = async (req, res) => {
+    const { email, old_password, new_password } = req.body;
+    // console.log(email,old_password,new_password)
+    try {
+      const user = await sellerModel.findOne({ email }).select("+password");
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const isMatch = await bcrpty.compare(old_password, user.password);
+      if (!isMatch)
+        return res.status(400).json({ message: "Incorrect old password" });
+
+      user.password = await bcrpty.hash(new_password, 10);
+      await user.save();
+      res.json({ message: "Password changed successfully" });
+    } catch (error) {
+      res.status(500).json({ message: "Server Error" });
+    }
+  };
+  // End Method
 }
+
 module.exports = new authControllers();
