@@ -175,6 +175,14 @@ class orderController {
 
     try {
       const order = await customerOrder.findById(orderId);
+      if (
+        order &&
+        order.payment_status === "paid" &&
+        order.delivery_status === "cancelled"
+      ) {
+        order.delivery_status = "processing";
+        await order.save();
+      }
       responseReturn(res, 200, {
         order,
       });
@@ -256,10 +264,36 @@ class orderController {
     const { status } = req.body;
 
     try {
-      await customerOrder.findByIdAndUpdate(orderId, {
-        delivery_status: status,
-      });
-      responseReturn(res, 200, { message: "order Status change success" });
+      const order = await customerOrder.findById(orderId);
+      if (!order) {
+        return responseReturn(res, 404, { message: "Order not found" });
+      }
+      // Prevent delivering unpaid orders
+      if (status === "delivered" && order.payment_status !== "paid") {
+        return responseReturn(res, 400, {
+          message: "Cannot deliver unpaid order.",
+        });
+      }
+      // Prevent reverting from delivered unless it's a return
+      if (order.delivery_status === "delivered" && status !== "returned") {
+        return responseReturn(res, 400, {
+          message: "Order already delivered.",
+        });
+      }
+      // Only allow valid transitions
+      const validStatuses = [
+        "processing",
+        "shipped",
+        "delivered",
+        "cancelled",
+        "returned",
+      ];
+      if (!validStatuses.includes(status)) {
+        return responseReturn(res, 400, { message: "Invalid status." });
+      }
+      order.delivery_status = status;
+      await order.save();
+      responseReturn(res, 200, { message: "Order status change success" });
     } catch (error) {
       console.log("get admin status error" + error.message);
       responseReturn(res, 500, { message: "internal server error" });
