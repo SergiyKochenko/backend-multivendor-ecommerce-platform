@@ -23,8 +23,8 @@ class paymentController {
 
         const accountLink = await stripe.accountLinks.create({
           account: account.id,
-          refresh_url: "http://localhost:3001/refresh",
-          return_url: `http://localhost:3001/success?activeCode=${uid}`,
+          refresh_url: "https://dashboard-multivendor-ecommerce-platform.onrender.com/refresh",
+          return_url: `https://dashboard-multivendor-ecommerce-platform.onrender.com/success?activeCode=${uid}`,
           type: "account_onboarding",
         });
         await stripeModel.create({
@@ -38,8 +38,8 @@ class paymentController {
 
         const accountLink = await stripe.accountLinks.create({
           account: account.id,
-          refresh_url: "http://localhost:3001/refresh",
-          return_url: `http://localhost:3001/success?activeCode=${uid}`,
+          refresh_url: "https://dashboard-multivendor-ecommerce-platform.onrender.com/refresh",
+          return_url: `https://dashboard-multivendor-ecommerce-platform.onrender.com/success?activeCode=${uid}`,
           type: "account_onboarding",
         });
         await stripeModel.create({
