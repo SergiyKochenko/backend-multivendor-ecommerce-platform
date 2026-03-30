@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require("express");
 const app = express();
 const cors = require("cors");
@@ -9,49 +10,32 @@ const socket = require("socket.io");
 const http = require("http");
 const server = http.createServer(app);
 
-const allowedOrigins = process.env.mode === "pro" 
-? [process.env.client_customer_production_url, process.env.
-  client_admin_production_url]
-  : ["http://localhost:3000", "http://localhost:3001"];
+
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "https://frontend-multivendor-ecommerce-platform.onrender.com",
+  "https://dashboard-multivendor-ecommerce-platform.onrender.com"
+];
 
 app.use(cors({
-    origin: function(origin, callback) {
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
-    credentials: true,
-  })
-);
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+}));
 
 const io = socket(server, {
   cors: {
-    origin: function(origin, callback) {
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
-    },
+    origin: allowedOrigins,
+    methods: ["GET", "POST"],
     credentials: true,
   },
 });
-
-// app.use(
-//   cors({
-//     origin : process.env.mode === "pro" ? [process.env.client_customer_production_url, process.env.client_admin_production_url] : ["http://localhost:3000", "http://localhost:3001"],
-//     credentials: true,
-//   }),
-// );
-
-// const io = socket(server, {
-//   cors: {
-//     origin: process.env.mode === "pro" ? [process.env.client_customer_production_url, process.env.client_admin_production_url] : ["http://localhost:3000", "http://localhost:3001"],
-//     credentials: true,
-//   },
-// });
 
 var allCustomer = [];
 var allSeller = [];
@@ -161,7 +145,7 @@ app.use("/api", require("./routes/paymentRoutes"));
 app.use("/api", require("./routes/dashboard/dashboardRoutes"));
 
 app.get("/", (req, res) => res.send("Hello Server"));
-const port = process.env.PORT;
+const port = process.env.PORT || 5000;
 dbConnect();
 
 server.listen(port, () => console.log(`Server is running on port ${port}`));
