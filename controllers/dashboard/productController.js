@@ -158,6 +158,23 @@ class productController {
 
   // End Method
 
+   delete_product = async (req, res) => {
+    const { productId } = req.params;
+    const { id } = req; // seller id from auth middleware
+    try {
+      const product = await productModel.findOne({ _id: productId, sellerId: id });
+      if (!product) {
+        return responseReturn(res, 404, { error: 'Product not found or unauthorized' });
+      }
+      await productModel.deleteOne({ _id: productId });
+      responseReturn(res, 200, { message: 'Product deleted successfully' });
+    } catch (error) {
+      responseReturn(res, 500, { error: error.message });
+    }
+  };
+
+  // End Method
+
   product_image_update = async (req, res) => {
     const form = formidable({ multiples: true });
 
