@@ -16,8 +16,77 @@ const formidable = require("formidable");
 
 class dashboardController {
   get_admin_dashboard_data = async (req, res) => {
-    const { id } = req;
+    const { year } = req.query;
+    const targetYear = Number.parseInt(year, 10) || new Date().getFullYear();
     try {
+      const monthlyTemplate = () => new Array(12).fill(0);
+
+      // Aggregate total sale by month (current year) from wallet
+      const revenueAgg = await myShopWallet.aggregate([
+        {
+          $match: {
+            year: targetYear,
+          },
+        },
+        {
+          $group: {
+            _id: "$month",
+            total: { $sum: "$amount" },
+          },
+        },
+      ]);
+
+      const monthlyRevenue = monthlyTemplate();
+      revenueAgg.forEach((item) => {
+        if (item._id >= 1 && item._id <= 12) monthlyRevenue[item._id - 1] = item.total;
+      });
+
+      // Aggregate orders by month (current year)
+      const orderAgg = await customerOrder.aggregate([
+        {
+          $match: {
+            createdAt: {
+              $gte: new Date(`${targetYear}-01-01T00:00:00.000Z`),
+              $lt: new Date(`${targetYear + 1}-01-01T00:00:00.000Z`),
+            },
+          },
+        },
+        {
+          $group: {
+            _id: { $month: "$createdAt" },
+            total: { $sum: 1 },
+          },
+        },
+      ]);
+
+      const monthlyOrders = monthlyTemplate();
+      orderAgg.forEach((item) => {
+        if (item._id >= 1 && item._id <= 12) monthlyOrders[item._id - 1] = item.total;
+      });
+
+      // Aggregate seller registrations by month (current year)
+      const sellerAgg = await sellerModel.aggregate([
+        {
+          $match: {
+            createdAt: {
+              $gte: new Date(`${targetYear}-01-01T00:00:00.000Z`),
+              $lt: new Date(`${targetYear + 1}-01-01T00:00:00.000Z`),
+            },
+          },
+        },
+        {
+          $group: {
+            _id: { $month: "$createdAt" },
+            total: { $sum: 1 },
+          },
+        },
+      ]);
+
+      const monthlySellers = monthlyTemplate();
+      sellerAgg.forEach((item) => {
+        if (item._id >= 1 && item._id <= 12) monthlySellers[item._id - 1] = item.total;
+      });
+
       const totalSale = await myShopWallet.aggregate([
         {
           $group: {
@@ -37,6 +106,11 @@ class dashboardController {
         totalSeller,
         messages,
         recentOrders,
+        chart: {
+          orders: monthlyOrders,
+          revenue: monthlyRevenue,
+          sellers: monthlySellers,
+        },
         totalSale: totalSale.length > 0 ? totalSale[0].totalAmount : 0,
       });
     } catch (error) {
@@ -47,7 +121,88 @@ class dashboardController {
 
   get_seller_dashboard_data = async (req, res) => {
     const { id } = req;
+    const { year } = req.query;
+    const targetYear = Number.parseInt(year, 10) || new Date().getFullYear();
     try {
+      const monthlyTemplate = () => new Array(12).fill(0);
+
+      // Monthly revenue from seller wallet (current year)
+      const revenueAgg = await sellerWallet.aggregate([
+        {
+          $match: {
+            sellerId: {
+              $eq: id,
+            },
+            year: targetYear,
+          },
+        },
+        {
+          $group: {
+            _id: "$month",
+            total: { $sum: "$amount" },
+          },
+        },
+      ]);
+
+      const monthlyRevenue = monthlyTemplate();
+      revenueAgg.forEach((item) => {
+        if (item._id >= 1 && item._id <= 12) monthlyRevenue[item._id - 1] = item.total;
+      });
+
+      // Monthly orders count (current year)
+      const orderAgg = await authOrder.aggregate([
+        {
+          $match: {
+            sellerId: new ObjectId(id),
+            createdAt: {
+              $gte: new Date(`${targetYear}-01-01T00:00:00.000Z`),
+              $lt: new Date(`${targetYear + 1}-01-01T00:00:00.000Z`),
+            },
+          },
+        },
+        {
+          $group: {
+            _id: { $month: "$createdAt" },
+            total: { $sum: 1 },
+          },
+        },
+      ]);
+
+      const monthlyOrders = monthlyTemplate();
+      orderAgg.forEach((item) => {
+        if (item._id >= 1 && item._id <= 12) monthlyOrders[item._id - 1] = item.total;
+      });
+
+      // Monthly sales volume (products count) per month
+      const salesAgg = await authOrder.aggregate([
+        {
+          $match: {
+            sellerId: new ObjectId(id),
+            createdAt: {
+              $gte: new Date(`${targetYear}-01-01T00:00:00.000Z`),
+              $lt: new Date(`${targetYear + 1}-01-01T00:00:00.000Z`),
+            },
+          },
+        },
+        {
+          $project: {
+            month: { $month: "$createdAt" },
+            productCount: { $size: "$products" },
+          },
+        },
+        {
+          $group: {
+            _id: "$month",
+            total: { $sum: "$productCount" },
+          },
+        },
+      ]);
+
+      const monthlySales = monthlyTemplate();
+      salesAgg.forEach((item) => {
+        if (item._id >= 1 && item._id <= 12) monthlySales[item._id - 1] = item.total;
+      });
+
       const totalSale = await sellerWallet.aggregate([
         {
           $match: {
@@ -121,6 +276,11 @@ class dashboardController {
         totalPendingOrder,
         messages,
         recentOrders,
+        chart: {
+          orders: monthlyOrders,
+          revenue: monthlyRevenue,
+          sales: monthlySales,
+        },
         totalSale: totalSale.length > 0 ? totalSale[0].totalAmount : 0,
       });
     } catch (error) {
