@@ -167,7 +167,25 @@ class paymentController {
       const withdrowalRequest = await withdrowRequest.find({
         status: "pending",
       });
-      responseReturn(res, 200, { withdrowalRequest });
+
+      const sellerIds = withdrowalRequest.map((request) => request.sellerId);
+      const sellers = await sellerModel
+        .find({ _id: { $in: sellerIds } })
+        .select("_id name");
+
+      const sellerNameMap = new Map(
+        sellers.map((seller) => [seller._id.toString(), seller.name]),
+      );
+
+      const withdrowalRequestWithSeller = withdrowalRequest.map((request) => {
+        const requestObj = request.toObject();
+        return {
+          ...requestObj,
+          sellerName: sellerNameMap.get(request.sellerId) || "Unknown Seller",
+        };
+      });
+
+      responseReturn(res, 200, { withdrowalRequest: withdrowalRequestWithSeller });
     } catch (error) {
       responseReturn(res, 500, { message: "Internal Server Error" });
     }
