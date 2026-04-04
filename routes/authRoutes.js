@@ -18,6 +18,12 @@ router.post(
 );
 
 router.post(
+  "/profile-user-info-update",
+  authMiddleware,
+  authControllers.profile_user_info_update,
+);
+
+router.post(
   "/change-password",
   authMiddleware,
   authControllers.change_password,

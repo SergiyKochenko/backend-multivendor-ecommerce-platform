@@ -179,6 +179,36 @@ class authControllers {
   };
   // End Method
 
+  profile_user_info_update = async (req, res) => {
+    const { name, email } = req.body;
+    const { id } = req;
+
+    try {
+      const existsUser = await sellerModel.findOne({
+        email,
+        _id: { $ne: id },
+      });
+
+      if (existsUser) {
+        return responseReturn(res, 400, { error: "Email Already Exists" });
+      }
+
+      await sellerModel.findByIdAndUpdate(id, {
+        name,
+        email,
+      });
+
+      const userInfo = await sellerModel.findById(id);
+      return responseReturn(res, 200, {
+        message: "Profile info updated successfully",
+        userInfo,
+      });
+    } catch (error) {
+      return responseReturn(res, 500, { error: error.message });
+    }
+  };
+  // End Method
+
   logout = async (req, res) => {
     try {
       res.cookie("accessToken", null, {
