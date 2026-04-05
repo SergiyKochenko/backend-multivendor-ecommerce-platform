@@ -4,6 +4,20 @@ const bcrypt = require("bcrypt");
 const sellerCustomerModel = require("../../models/chat/sellerCustomerModel");
 const { createToken } = require("../../utiles/tokenCreate");
 
+const customerCookieOptions = {
+  expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+  httpOnly: true,
+  secure: process.env.mode === "pro",
+  sameSite: process.env.mode === "pro" ? "none" : "lax",
+};
+
+const customerLogoutCookieOptions = {
+  expires: new Date(Date.now()),
+  httpOnly: true,
+  secure: process.env.mode === "pro",
+  sameSite: process.env.mode === "pro" ? "none" : "lax",
+};
+
 class customerAuthController {
   customer_register = async (req, res) => {
     const { name, email, password } = req.body;
@@ -28,9 +42,7 @@ class customerAuthController {
           email: createCustomer.email,
           method: createCustomer.method,
         });
-        res.cookie("customerToken", token, {
-          expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        });
+        res.cookie("customerToken", token, customerCookieOptions);
         responseReturn(res, 201, { message: "User Register Success", token });
       }
     } catch (error) {
@@ -54,9 +66,7 @@ class customerAuthController {
             email: customer.email,
             method: customer.method,
           });
-          res.cookie("customerToken", token, {
-            expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          });
+          res.cookie("customerToken", token, customerCookieOptions);
           responseReturn(res, 201, { message: "User Login Success", token });
         } else {
           responseReturn(res, 404, { error: "Password Wrong" });
@@ -71,9 +81,7 @@ class customerAuthController {
   // End Method
 
   customer_logout = async (req, res) => {
-    res.cookie("customerToken", "", {
-      expires: new Date(Date.now()),
-    });
+    res.cookie("customerToken", "", customerLogoutCookieOptions);
     responseReturn(res, 200, { message: "Logout Success" });
   };
   // End Method
