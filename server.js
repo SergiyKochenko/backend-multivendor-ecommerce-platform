@@ -1,44 +1,12 @@
-require('dotenv').config();
-const express = require("express");
-const app = express();
-const cors = require("cors");
-const bodyParser = require("body-parser");
-const cookieParser = require("cookie-parser");
-const { dbConnect } = require("./utiles/db");
+require("dotenv").config();
 
+const { app, allowedOrigins } = require("./app");
+const { dbConnect } = require("./utiles/db");
 const socket = require("socket.io");
 const http = require("http");
-const server = http.createServer(app);
 
-
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "https://frontend-multivendor-ecommerce-platform.onrender.com",
-  "https://dashboard-multivendor-ecommerce-platform.onrender.com"
-];
-
-app.use(cors({
-  origin: function(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-}));
-
-const io = socket(server, {
-  cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
-});
-
-var allCustomer = [];
-var allSeller = [];
+let allCustomer = [];
+let allSeller = [];
 let admin = {};
 
 const addUser = (customerId, socketId, userInfo) => {
@@ -75,77 +43,89 @@ const remove = (socketId) => {
   allSeller = allSeller.filter((c) => c.socketId !== socketId);
 };
 
-io.on("connection", (soc) => {
-  console.log("socket server running..");
+const registerSocketHandlers = (io) => {
+  io.on("connection", (soc) => {
+    console.log("socket server running..");
 
-  soc.on("add_user", (customerId, userInfo) => {
-    addUser(customerId, soc.id, userInfo);
-    io.emit("activeSeller", allSeller);
+    soc.on("add_user", (customerId, userInfo) => {
+      addUser(customerId, soc.id, userInfo);
+      io.emit("activeSeller", allSeller);
+    });
+    soc.on("add_seller", (sellerId, userInfo) => {
+      addSeller(sellerId, soc.id, userInfo);
+      io.emit("activeSeller", allSeller);
+    });
+    soc.on("send_seller_message", (msg) => {
+      const customer = findCustomer(msg.receverId);
+      if (customer !== undefined) {
+        soc.to(customer.socketId).emit("seller_message", msg);
+      }
+    });
+    soc.on("send_customer_message", (msg) => {
+      const seller = findSeller(msg.receverId);
+      if (seller !== undefined) {
+        soc.to(seller.socketId).emit("customer_message", msg);
+      }
+    });
+
+    soc.on("send_message_admin_to_seller", (msg) => {
+      const seller = findSeller(msg.receverId);
+      if (seller !== undefined) {
+        soc.to(seller.socketId).emit("receved_admin_message", msg);
+      }
+    });
+
+    soc.on("send_message_seller_to_admin", (msg) => {
+      if (admin.socketId) {
+        soc.to(admin.socketId).emit("receved_seller_message", msg);
+      }
+    });
+
+    soc.on("add_admin", (adminInfo) => {
+      delete adminInfo.email;
+      delete adminInfo.password;
+      admin = adminInfo;
+      admin.socketId = soc.id;
+      io.emit("activeSeller", allSeller);
+    });
+
+    soc.on("disconnect", () => {
+      console.log("user disconnect");
+      remove(soc.id);
+      io.emit("activeSeller", allSeller);
+    });
   });
-  soc.on("add_seller", (sellerId, userInfo) => {
-    addSeller(sellerId, soc.id, userInfo);
-    io.emit("activeSeller", allSeller);
-  });
-  soc.on("send_seller_message", (msg) => {
-    const customer = findCustomer(msg.receverId);
-    if (customer !== undefined) {
-      soc.to(customer.socketId).emit("seller_message", msg);
-    }
-  });
-  soc.on("send_customer_message", (msg) => {
-    const seller = findSeller(msg.receverId);
-    if (seller !== undefined) {
-      soc.to(seller.socketId).emit("customer_message", msg);
-    }
+};
+
+const createServer = () => {
+  const server = http.createServer(app);
+  const io = socket(server, {
+    cors: {
+      origin: allowedOrigins,
+      methods: ["GET", "POST"],
+      credentials: true,
+    },
   });
 
-  soc.on("send_message_admin_to_seller", (msg) => {
-    const seller = findSeller(msg.receverId);
-    if (seller !== undefined) {
-      soc.to(seller.socketId).emit("receved_admin_message", msg);
-    }
-  });
+  registerSocketHandlers(io);
+  return { server, io };
+};
 
-  soc.on("send_message_seller_to_admin", (msg) => {
-    if (admin.socketId) {
-      soc.to(admin.socketId).emit("receved_seller_message", msg);
-    }
-  });
+const startServer = () => {
+  const { server } = createServer();
+  const port = process.env.PORT || 5000;
+  dbConnect();
+  server.listen(port, () => console.log(`Server is running on port ${port}`));
+  return server;
+};
 
-  soc.on("add_admin", (adminInfo) => {
-    delete adminInfo.email;
-    delete adminInfo.password;
-    admin = adminInfo;
-    admin.socketId = soc.id;
-    io.emit("activeSeller", allSeller);
-  });
+if (require.main === module) {
+  startServer();
+}
 
-  soc.on("disconnect", () => {
-    console.log("user disconnect");
-    remove(soc.id);
-    io.emit("activeSeller", allSeller);
-  });
-});
-
-require("dotenv").config();
-
-app.use(bodyParser.json());
-app.use(cookieParser());
-
-app.use("/api/home", require("./routes/home/homeRoutes"));
-app.use("/api", require("./routes/authRoutes"));
-app.use("/api", require("./routes/order/orderRoutes"));
-app.use("/api", require("./routes/home/cardRoutes"));
-app.use("/api", require("./routes/dashboard/categoryRoutes"));
-app.use("/api", require("./routes/dashboard/productRoutes"));
-app.use("/api", require("./routes/dashboard/sellerRoutes"));
-app.use("/api", require("./routes/home/customerAuthRoutes"));
-app.use("/api", require("./routes/chatRoutes"));
-app.use("/api", require("./routes/paymentRoutes"));
-app.use("/api", require("./routes/dashboard/dashboardRoutes"));
-
-app.get("/", (req, res) => res.send("Hello Server"));
-const port = process.env.PORT || 5000;
-dbConnect();
-
-server.listen(port, () => console.log(`Server is running on port ${port}`));
+module.exports = {
+  app,
+  createServer,
+  startServer,
+  registerSocketHandlers,
+};
