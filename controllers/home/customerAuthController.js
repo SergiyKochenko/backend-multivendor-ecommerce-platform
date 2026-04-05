@@ -77,6 +77,30 @@ class customerAuthController {
     responseReturn(res, 200, { message: "Logout Success" });
   };
   // End Method
+
+  change_password = async (req, res) => {
+    const { old_password, new_password } = req.body;
+
+    try {
+      const customer = await customerModel.findById(req.id).select("+password");
+      if (!customer) {
+        return responseReturn(res, 404, { error: "User not found" });
+      }
+
+      const isMatch = await bcrypt.compare(old_password, customer.password);
+      if (!isMatch) {
+        return responseReturn(res, 400, { error: "Incorrect old password" });
+      }
+
+      customer.password = await bcrypt.hash(new_password, 10);
+      await customer.save();
+
+      responseReturn(res, 200, { message: "Password changed successfully" });
+    } catch (error) {
+      responseReturn(res, 500, { error: "Server Error" });
+    }
+  };
+  // End Method
 }
 
 module.exports = new customerAuthController();
