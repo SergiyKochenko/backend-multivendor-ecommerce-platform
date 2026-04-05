@@ -86,7 +86,13 @@ describe("cardController", () => {
     wishlistModel.find.mockResolvedValue([{ id: 1 }]);
     wishlistModel.findByIdAndDelete.mockResolvedValue({});
 
-    const addReq = { body: { slug: "product-1", userId: "user-1" } };
+    const addReq = {
+      body: {
+        slug: "product-1",
+        userId: "user-1",
+        productId: "product-1",
+      },
+    };
     const addRes = createRes();
     await cardController.add_wishlist(addReq, addRes);
 
@@ -101,5 +107,30 @@ describe("cardController", () => {
     expect(addRes.status).toHaveBeenCalledWith(201);
     expect(listRes.status).toHaveBeenCalledWith(200);
     expect(removeRes.status).toHaveBeenCalledWith(200);
+  });
+
+  test("blocks duplicate wishlist entries per user and product", async () => {
+    wishlistModel.findOne.mockResolvedValue({ _id: "wish-1" });
+
+    const req = {
+      body: {
+        slug: "product-1",
+        userId: "user-1",
+        productId: "product-1",
+      },
+    };
+    const res = createRes();
+
+    await cardController.add_wishlist(req, res);
+
+    expect(wishlistModel.findOne).toHaveBeenCalledWith({
+      userId: "user-1",
+      productId: "product-1",
+    });
+    expect(wishlistModel.create).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: "Product Is Already In Wishlist" }),
+    );
   });
 });

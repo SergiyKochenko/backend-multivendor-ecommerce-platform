@@ -186,11 +186,11 @@ class cardController {
   // End Method
 
   add_wishlist = async (req, res) => {
-    const { slug } = req.body;
+    const { userId, productId } = req.body;
     try {
-      const product = await wishlistModel.findOne({ slug });
+      const product = await wishlistModel.findOne({ userId, productId });
       if (product) {
-        responseReturn(res, 404, {
+        responseReturn(res, 409, {
           error: "Product Is Already In Wishlist",
         });
       } else {
