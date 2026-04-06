@@ -1,5 +1,6 @@
 const adminModel = require("../models/adminModel");
 const sellerModel = require("../models/sellerModel");
+const productModel = require("../models/productModel");
 const sellerCustomerModel = require("../models/chat/sellerCustomerModel");
 const { responseReturn } = require("../utiles/response");
 const bcrpty = require("bcrypt");
@@ -168,6 +169,7 @@ class authControllers {
           sub_district,
         },
       });
+      await productModel.updateMany({ sellerId: id }, { shopName });
       const userInfo = await sellerModel.findById(id);
       responseReturn(res, 201, {
         message: "Profile info Add Successfully",

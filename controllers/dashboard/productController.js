@@ -2,6 +2,7 @@ const formidable = require("formidable");
 const { responseReturn } = require("../../utiles/response");
 const cloudinary = require("cloudinary").v2;
 const productModel = require("../../models/productModel");
+const sellerModel = require("../../models/sellerModel");
 
 class productController {
   add_product = async (req, res) => {
@@ -9,16 +10,7 @@ class productController {
     const form = formidable({ multiples: true });
 
     form.parse(req, async (err, field, files) => {
-      let {
-        name,
-        category,
-        description,
-        stock,
-        price,
-        discount,
-        shopName,
-        brand,
-      } = field;
+      let { name, category, description, stock, price, discount, brand } = field;
 
       let { images } = files;
       name = name.trim();
@@ -32,6 +24,14 @@ class productController {
       });
 
       try {
+        const seller = await sellerModel.findById(id);
+        const shopName = seller?.shopInfo?.shopName?.trim();
+        if (!shopName) {
+          return responseReturn(res, 400, {
+            error: "Seller shop name is required before adding products",
+          });
+        }
+
         let allImageUrl = [];
 
         if (!Array.isArray(images)) {
@@ -111,8 +111,24 @@ class productController {
 
   product_get = async (req, res) => {
     const { productId } = req.params;
+    const { id } = req;
     try {
       const product = await productModel.findById(productId);
+      if (
+        product &&
+        id &&
+        String(product.sellerId) === String(id)
+      ) {
+        const seller = await sellerModel.findById(id);
+        const currentShopName = seller?.shopInfo?.shopName?.trim();
+
+        if (currentShopName && currentShopName !== product.shopName) {
+          await productModel.findByIdAndUpdate(productId, {
+            shopName: currentShopName,
+          });
+          product.shopName = currentShopName;
+        }
+      }
       responseReturn(res, 200, { product });
     } catch (error) {
       console.log(error.message);

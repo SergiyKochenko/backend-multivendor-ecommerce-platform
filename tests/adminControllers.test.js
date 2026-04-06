@@ -166,6 +166,7 @@ describe("dashboard and catalog controllers", () => {
     );
     mockCloudinary.uploader.upload.mockResolvedValue({ url: "https://cdn.example/product.png" });
     productModel.create.mockResolvedValue({ id: "product-1" });
+    sellerModel.findById.mockResolvedValue({ shopInfo: { shopName: "Shop" } });
 
     await productController.add_product({ id: "seller-1" }, createRes());
 

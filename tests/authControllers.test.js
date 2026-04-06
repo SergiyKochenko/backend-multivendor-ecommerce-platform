@@ -25,6 +25,9 @@ jest.mock("../models/sellerModel", () => ({
   findById: jest.fn(),
   findByIdAndUpdate: jest.fn(),
 }));
+jest.mock("../models/productModel", () => ({
+  updateMany: jest.fn(),
+}));
 jest.mock("../models/chat/sellerCustomerModel", () => ({
   create: jest.fn(),
 }));
@@ -34,6 +37,7 @@ const bcrypt = require("bcrypt");
 const { createToken } = require("../utiles/tokenCreate");
 const adminModel = require("../models/adminModel");
 const sellerModel = require("../models/sellerModel");
+const productModel = require("../models/productModel");
 const sellerCustomerModel = require("../models/chat/sellerCustomerModel");
 const cloudinary = require("cloudinary").v2;
 const authControllers = require("../controllers/authControllers");
@@ -125,11 +129,16 @@ describe("authControllers", () => {
     sellerModel.findByIdAndUpdate.mockResolvedValue({});
     sellerModel.findById.mockResolvedValue({ id: "seller-1" });
     sellerModel.findOne.mockResolvedValue(null);
+    productModel.updateMany.mockResolvedValue({ modifiedCount: 2 });
 
     const res = createRes();
     await authControllers.profile_info_add({ id: "seller-1", body: { division: "Dhaka", district: "Dhaka", shopName: "Shop", sub_district: "Center" } }, res);
     await authControllers.profile_user_info_update({ id: "seller-1", body: { name: "New Name", email: "new@example.com" } }, res);
 
+    expect(productModel.updateMany).toHaveBeenCalledWith(
+      { sellerId: "seller-1" },
+      { shopName: "Shop" },
+    );
     expect(res.status).toHaveBeenCalledWith(201);
     expect(res.status).toHaveBeenCalledWith(200);
   });
