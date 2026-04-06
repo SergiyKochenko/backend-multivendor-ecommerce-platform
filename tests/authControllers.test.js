@@ -137,10 +137,42 @@ describe("authControllers", () => {
 
     expect(productModel.updateMany).toHaveBeenCalledWith(
       { sellerId: "seller-1" },
-      { shopName: "Shop" },
+      { $set: { shopName: "Shop" } },
     );
     expect(res.status).toHaveBeenCalledWith(201);
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  test("syncs updated shop name to all seller products", async () => {
+    sellerModel.findByIdAndUpdate.mockResolvedValue({});
+    sellerModel.findById.mockResolvedValue({ id: "seller-1" });
+    productModel.updateMany.mockResolvedValue({ modifiedCount: 3 });
+
+    const res = createRes();
+    await authControllers.profile_info_add(
+      {
+        id: "seller-1",
+        body: {
+          division: "Dhaka",
+          district: "Dhaka",
+          shopName: "  New Shop  ",
+          sub_district: "Center",
+        },
+      },
+      res,
+    );
+
+    expect(sellerModel.findByIdAndUpdate).toHaveBeenCalledWith(
+      "seller-1",
+      expect.objectContaining({
+        shopInfo: expect.objectContaining({ shopName: "New Shop" }),
+      }),
+    );
+    expect(productModel.updateMany).toHaveBeenCalledWith(
+      { sellerId: "seller-1" },
+      { $set: { shopName: "New Shop" } },
+    );
+    expect(res.status).toHaveBeenCalledWith(201);
   });
 
   test("rejects profile update when email exists", async () => {

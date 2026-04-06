@@ -159,17 +159,21 @@ class authControllers {
   profile_info_add = async (req, res) => {
     const { division, district, shopName, sub_district } = req.body;
     const { id } = req;
+    const normalizedShopName = shopName?.trim();
 
     try {
       await sellerModel.findByIdAndUpdate(id, {
         shopInfo: {
-          shopName,
+          shopName: normalizedShopName,
           division,
           district,
           sub_district,
         },
       });
-      await productModel.updateMany({ sellerId: id }, { shopName });
+      await productModel.updateMany(
+        { sellerId: id },
+        { $set: { shopName: normalizedShopName } },
+      );
       const userInfo = await sellerModel.findById(id);
       responseReturn(res, 201, {
         message: "Profile info Add Successfully",
