@@ -5,16 +5,29 @@ const { dbConnect } = require("../utiles/db");
 const authOrderModel = require("../models/authOrder");
 const customerOrder = require("../models/customerOrder");
 
-const resolveCanonicalStatus = (suborders = []) => {
+const resolveCanonicalStatus = ({ customerPaymentStatus, suborders = [] }) => {
+  if (customerPaymentStatus === "unpaid") {
+    return "cancelled";
+  }
+
   if (!suborders.length) {
-    return "pending";
+    return customerPaymentStatus === "paid" ? "processing" : "pending";
   }
 
   const sortedByLastUpdate = [...suborders].sort(
     (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt),
   );
 
-  return sortedByLastUpdate[0].delivery_status || "pending";
+  const lastSellerStatus = sortedByLastUpdate[0].delivery_status || "pending";
+
+  if (
+    customerPaymentStatus === "paid" &&
+    ["pending", "placed", "cancelled"].includes(lastSellerStatus)
+  ) {
+    return "processing";
+  }
+
+  return lastSellerStatus;
 };
 
 const parseOrderIdsArg = () => {
@@ -38,8 +51,11 @@ const syncCustomerOrderStatuses = async () => {
 
     const customerOrders =
       targetOrderIds.length > 0
-        ? await customerOrder.find({ _id: { $in: targetOrderIds } }, { _id: 1, delivery_status: 1 })
-        : await customerOrder.find({}, { _id: 1, delivery_status: 1 });
+        ? await customerOrder.find(
+            { _id: { $in: targetOrderIds } },
+            { _id: 1, delivery_status: 1, payment_status: 1 },
+          )
+        : await customerOrder.find({}, { _id: 1, delivery_status: 1, payment_status: 1 });
 
     let processed = 0;
     let syncedOrders = 0;
@@ -60,7 +76,10 @@ const syncCustomerOrderStatuses = async () => {
         continue;
       }
 
-      const canonicalStatus = resolveCanonicalStatus(suborders);
+      const canonicalStatus = resolveCanonicalStatus({
+        customerPaymentStatus: item.payment_status,
+        suborders,
+      });
 
       const sellerResult = await authOrderModel.updateMany(
         {

@@ -142,6 +142,7 @@ describe("orderController", () => {
   test("rejects invalid admin status transitions", async () => {
     customerOrder.findById
       .mockResolvedValueOnce({ payment_status: "unpaid", delivery_status: "pending", save: jest.fn() })
+      .mockResolvedValueOnce({ payment_status: "paid", delivery_status: "processing", save: jest.fn() })
       .mockResolvedValueOnce({ payment_status: "paid", delivery_status: "delivered", save: jest.fn() })
       .mockResolvedValueOnce({ payment_status: "paid", delivery_status: "processing", save: jest.fn() })
       .mockResolvedValueOnce(null);
@@ -150,6 +151,12 @@ describe("orderController", () => {
     await orderController.admin_order_status_update(
       { params: { orderId: "507f1f77bcf86cd799439011" }, body: { status: "delivered" } },
       unpaidRes,
+    );
+
+    const paidCancelledRes = createRes();
+    await orderController.admin_order_status_update(
+      { params: { orderId: "507f1f77bcf86cd799439011" }, body: { status: "cancelled" } },
+      paidCancelledRes,
     );
 
     const deliveredRes = createRes();
@@ -171,6 +178,7 @@ describe("orderController", () => {
     );
 
     expect(unpaidRes.status).toHaveBeenCalledWith(400);
+    expect(paidCancelledRes.status).toHaveBeenCalledWith(400);
     expect(deliveredRes.status).toHaveBeenCalledWith(400);
     expect(invalidRes.status).toHaveBeenCalledWith(400);
     expect(notFoundRes.status).toHaveBeenCalledWith(404);

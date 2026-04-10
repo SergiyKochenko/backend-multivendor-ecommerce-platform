@@ -275,6 +275,18 @@ class orderController {
         return responseReturn(res, 400, { message: "Invalid status." });
       }
 
+      if (order.payment_status === "unpaid" && status !== "cancelled") {
+        return responseReturn(res, 400, {
+          message: "Unpaid orders can only be cancelled.",
+        });
+      }
+
+      if (order.payment_status === "paid" && status === "cancelled") {
+        return responseReturn(res, 400, {
+          message: "Paid orders cannot be cancelled.",
+        });
+      }
+
       // Prevent delivering unpaid orders
       if (status === "delivered" && order.payment_status !== "paid") {
         return responseReturn(res, 400, {
@@ -364,6 +376,18 @@ class orderController {
         return responseReturn(res, 400, { message: "Invalid status." });
       }
 
+      if (order.payment_status === "unpaid" && status !== "cancelled") {
+        return responseReturn(res, 400, {
+          message: "Unpaid orders can only be cancelled.",
+        });
+      }
+
+      if (order.payment_status === "paid" && status === "cancelled") {
+        return responseReturn(res, 400, {
+          message: "Paid orders cannot be cancelled.",
+        });
+      }
+
       // Seller-controlled status: apply the selected status everywhere for this parent order.
       await authOrderModel.updateMany(
         {
@@ -410,12 +434,13 @@ class orderController {
     try {
       await customerOrder.findByIdAndUpdate(orderId, {
         payment_status: "paid",
+        delivery_status: "processing",
       });
       await authOrderModel.updateMany(
         { orderId: new ObjectId(orderId) },
         {
           payment_status: "paid",
-          delivery_status: "pending",
+          delivery_status: "processing",
         },
       );
       const cuOrder = await customerOrder.findById(orderId);
