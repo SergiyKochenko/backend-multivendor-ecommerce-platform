@@ -12,6 +12,8 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET);
 
 class orderController {
   validDeliveryStatuses = [
+    "pending",
+    "placed",
     "processing",
     "shipped",
     "delivered",
@@ -19,6 +21,45 @@ class orderController {
     "returned",
     "warehouse",
   ];
+
+  resolveCustomerStatusFromSellerStatuses = (statuses = []) => {
+    const uniqueStatuses = [...new Set(statuses.filter(Boolean))];
+
+    if (uniqueStatuses.length === 0) {
+      return "pending";
+    }
+
+    if (uniqueStatuses.length === 1) {
+      return uniqueStatuses[0];
+    }
+
+    const allCompletedOrClosed = uniqueStatuses.every((status) =>
+      ["delivered", "cancelled", "returned"].includes(status),
+    );
+
+    if (allCompletedOrClosed) {
+      if (uniqueStatuses.includes("delivered")) return "delivered";
+      if (uniqueStatuses.includes("returned")) return "returned";
+      return "cancelled";
+    }
+
+    const progressOrder = [
+      "pending",
+      "placed",
+      "warehouse",
+      "processing",
+      "shipped",
+      "delivered",
+    ];
+
+    for (const candidate of progressOrder) {
+      if (uniqueStatuses.includes(candidate)) {
+        return candidate;
+      }
+    }
+
+    return "processing";
+  };
 
   syncCustomerAndSellerOrderStatus = async ({ orderId, status }) => {
     const customer = await customerOrder.findById(orderId);
@@ -406,9 +447,20 @@ class orderController {
       await authOrderModel.findByIdAndUpdate(orderId, {
         delivery_status: status,
       });
+
+      const sellerSubOrders = await authOrderModel.find(
+        { orderId: order.orderId },
+        { delivery_status: 1 },
+      );
+
+      const customerStatus = this.resolveCustomerStatusFromSellerStatuses(
+        sellerSubOrders.map((item) => item.delivery_status),
+      );
+
       await customerOrder.findByIdAndUpdate(order.orderId, {
-        delivery_status: status,
+        delivery_status: customerStatus,
       });
+
       responseReturn(res, 200, {
         message: "order status updated successfully",
       });

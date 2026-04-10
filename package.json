@@ -10,7 +10,8 @@
     "server": "nodemon server.js",
     "start": "node server.js",
     "test": "jest --runInBand --coverage",
-    "backfill:shop-names": "node scripts/backfillProductShopNames.js"
+    "backfill:shop-names": "node scripts/backfillProductShopNames.js",
+    "sync:customer-order-statuses": "node scripts/syncCustomerOrderStatuses.js"
   },
   "keywords": [],
   "author": "",
