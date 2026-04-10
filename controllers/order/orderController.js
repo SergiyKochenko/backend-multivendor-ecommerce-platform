@@ -22,66 +22,6 @@ class orderController {
     "warehouse",
   ];
 
-  resolveCustomerStatusFromSellerStatuses = (statuses = []) => {
-    const uniqueStatuses = [...new Set(statuses.filter(Boolean))];
-
-    if (uniqueStatuses.length === 0) {
-      return "pending";
-    }
-
-    if (uniqueStatuses.length === 1) {
-      return uniqueStatuses[0];
-    }
-
-    const allCompletedOrClosed = uniqueStatuses.every((status) =>
-      ["delivered", "cancelled", "returned"].includes(status),
-    );
-
-    if (allCompletedOrClosed) {
-      if (uniqueStatuses.includes("delivered")) return "delivered";
-      if (uniqueStatuses.includes("returned")) return "returned";
-      return "cancelled";
-    }
-
-    const progressOrder = [
-      "pending",
-      "placed",
-      "warehouse",
-      "processing",
-      "shipped",
-      "delivered",
-    ];
-
-    for (const candidate of progressOrder) {
-      if (uniqueStatuses.includes(candidate)) {
-        return candidate;
-      }
-    }
-
-    return "processing";
-  };
-
-  syncCustomerAndSellerOrderStatus = async ({ orderId, status }) => {
-    const customer = await customerOrder.findById(orderId);
-    if (!customer) {
-      return null;
-    }
-
-    customer.delivery_status = status;
-    await customer.save();
-
-    await authOrderModel.updateMany(
-      {
-        orderId: new ObjectId(orderId),
-      },
-      {
-        delivery_status: status,
-      },
-    );
-
-    return customer;
-  };
-
   paymentCheck = async (id) => {
     try {
       const order = await customerOrder.findById(id);
@@ -444,21 +384,18 @@ class orderController {
         });
       }
 
-      await authOrderModel.findByIdAndUpdate(orderId, {
-        delivery_status: status,
-      });
-
-      const sellerSubOrders = await authOrderModel.find(
-        { orderId: order.orderId },
-        { delivery_status: 1 },
-      );
-
-      const customerStatus = this.resolveCustomerStatusFromSellerStatuses(
-        sellerSubOrders.map((item) => item.delivery_status),
+      // Seller-controlled status: apply the selected status everywhere for this parent order.
+      await authOrderModel.updateMany(
+        {
+          orderId: order.orderId,
+        },
+        {
+          delivery_status: status,
+        },
       );
 
       await customerOrder.findByIdAndUpdate(order.orderId, {
-        delivery_status: customerStatus,
+        delivery_status: status,
       });
 
       responseReturn(res, 200, {

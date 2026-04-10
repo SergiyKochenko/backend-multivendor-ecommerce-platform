@@ -243,11 +243,7 @@ describe("orderController", () => {
         payment_status: "paid",
         delivery_status: "processing",
       });
-    authOrderModel.find.mockResolvedValue([
-      { delivery_status: "shipped" },
-      { delivery_status: "processing" },
-    ]);
-    authOrderModel.findByIdAndUpdate.mockResolvedValue({});
+    authOrderModel.updateMany.mockResolvedValue({});
     customerOrder.findByIdAndUpdate.mockResolvedValue({});
 
     const filteredRes = createRes();
@@ -275,9 +271,13 @@ describe("orderController", () => {
     expect(sellerOrderRes.status).toHaveBeenCalledWith(200);
     expect(sellerStatusRes.status).toHaveBeenCalledWith(200);
     expect(adminOrderRes.status).toHaveBeenCalledWith(200);
+    expect(authOrderModel.updateMany).toHaveBeenCalledWith(
+      { orderId: "507f1f77bcf86cd799439011" },
+      { delivery_status: "shipped" },
+    );
     expect(customerOrder.findByIdAndUpdate).toHaveBeenCalledWith(
       "507f1f77bcf86cd799439011",
-      { delivery_status: "processing" },
+      { delivery_status: "shipped" },
     );
   });
 });

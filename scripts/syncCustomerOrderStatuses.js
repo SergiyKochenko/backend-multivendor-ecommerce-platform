@@ -5,43 +5,16 @@ const { dbConnect } = require("../utiles/db");
 const authOrderModel = require("../models/authOrder");
 const customerOrder = require("../models/customerOrder");
 
-const resolveCustomerStatusFromSellerStatuses = (statuses = []) => {
-  const uniqueStatuses = [...new Set(statuses.filter(Boolean))];
-
-  if (uniqueStatuses.length === 0) {
+const resolveCanonicalStatus = (suborders = []) => {
+  if (!suborders.length) {
     return "pending";
   }
 
-  if (uniqueStatuses.length === 1) {
-    return uniqueStatuses[0];
-  }
-
-  const allCompletedOrClosed = uniqueStatuses.every((status) =>
-    ["delivered", "cancelled", "returned"].includes(status),
+  const sortedByLastUpdate = [...suborders].sort(
+    (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt),
   );
 
-  if (allCompletedOrClosed) {
-    if (uniqueStatuses.includes("delivered")) return "delivered";
-    if (uniqueStatuses.includes("returned")) return "returned";
-    return "cancelled";
-  }
-
-  const progressOrder = [
-    "pending",
-    "placed",
-    "warehouse",
-    "processing",
-    "shipped",
-    "delivered",
-  ];
-
-  for (const candidate of progressOrder) {
-    if (uniqueStatuses.includes(candidate)) {
-      return candidate;
-    }
-  }
-
-  return "processing";
+  return sortedByLastUpdate[0].delivery_status || "pending";
 };
 
 const parseOrderIdsArg = () => {
@@ -69,7 +42,9 @@ const syncCustomerOrderStatuses = async () => {
         : await customerOrder.find({}, { _id: 1, delivery_status: 1 });
 
     let processed = 0;
-    let updated = 0;
+    let syncedOrders = 0;
+    let customerOrdersUpdated = 0;
+    let sellerRowsUpdated = 0;
     let skippedNoSuborders = 0;
 
     for (const item of customerOrders) {
@@ -77,7 +52,7 @@ const syncCustomerOrderStatuses = async () => {
 
       const suborders = await authOrderModel.find(
         { orderId: item._id },
-        { delivery_status: 1 },
+        { delivery_status: 1, updatedAt: 1 },
       );
 
       if (!suborders.length) {
@@ -85,23 +60,39 @@ const syncCustomerOrderStatuses = async () => {
         continue;
       }
 
-      const derivedStatus = resolveCustomerStatusFromSellerStatuses(
-        suborders.map((suborder) => suborder.delivery_status),
+      const canonicalStatus = resolveCanonicalStatus(suborders);
+
+      const sellerResult = await authOrderModel.updateMany(
+        {
+          orderId: item._id,
+          delivery_status: { $ne: canonicalStatus },
+        },
+        {
+          delivery_status: canonicalStatus,
+        },
       );
 
-      if (item.delivery_status !== derivedStatus) {
+      sellerRowsUpdated += sellerResult.modifiedCount || 0;
+
+      let customerUpdated = false;
+      if (item.delivery_status !== canonicalStatus) {
         await customerOrder.findByIdAndUpdate(item._id, {
-          delivery_status: derivedStatus,
+          delivery_status: canonicalStatus,
         });
-        updated += 1;
+        customerOrdersUpdated += 1;
+        customerUpdated = true;
+      }
+
+      if ((sellerResult.modifiedCount || 0) > 0 || customerUpdated) {
+        syncedOrders += 1;
         console.log(
-          `Synced customer order ${item._id}: ${item.delivery_status} -> ${derivedStatus}`,
+          `Synced order ${item._id}: customer ${item.delivery_status} -> ${canonicalStatus}, seller rows updated: ${sellerResult.modifiedCount || 0}`,
         );
       }
     }
 
     console.log(
-      `Sync complete. Processed: ${processed}, updated: ${updated}, skipped (no suborders): ${skippedNoSuborders}`,
+      `Sync complete. Processed: ${processed}, synced orders: ${syncedOrders}, customer orders updated: ${customerOrdersUpdated}, seller rows updated: ${sellerRowsUpdated}, skipped (no suborders): ${skippedNoSuborders}`,
     );
   } catch (error) {
     console.error("Order status sync failed:", error.message);
