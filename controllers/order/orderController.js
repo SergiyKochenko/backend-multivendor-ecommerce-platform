@@ -186,14 +186,6 @@ class orderController {
 
     try {
       const order = await customerOrder.findById(orderId);
-      if (
-        order &&
-        order.payment_status === "paid" &&
-        order.delivery_status === "cancelled"
-      ) {
-        order.delivery_status = "processing";
-        await order.save();
-      }
       responseReturn(res, 200, {
         order,
       });
@@ -370,18 +362,6 @@ class orderController {
 
       if (!this.validDeliveryStatuses.includes(status)) {
         return responseReturn(res, 400, { message: "Invalid status." });
-      }
-
-      if (status === "delivered" && order.payment_status !== "paid") {
-        return responseReturn(res, 400, {
-          message: "Cannot deliver unpaid order.",
-        });
-      }
-
-      if (order.delivery_status === "delivered" && status !== "returned") {
-        return responseReturn(res, 400, {
-          message: "Order already delivered.",
-        });
       }
 
       // Seller-controlled status: apply the selected status everywhere for this parent order.
