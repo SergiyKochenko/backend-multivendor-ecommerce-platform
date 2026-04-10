@@ -127,6 +127,7 @@ describe("orderController", () => {
   test("updates admin order status", async () => {
     const save = jest.fn();
     customerOrder.findById.mockResolvedValue({ payment_status: "paid", delivery_status: "processing", save });
+    authOrderModel.updateMany.mockResolvedValue({});
 
     const req = { params: { orderId: "507f1f77bcf86cd799439011" }, body: { status: "shipped" } };
     const res = createRes();
@@ -134,6 +135,7 @@ describe("orderController", () => {
     await orderController.admin_order_status_update(req, res);
 
     expect(save).toHaveBeenCalled();
+    expect(authOrderModel.updateMany).toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
@@ -234,8 +236,15 @@ describe("orderController", () => {
   test("covers filtered order lookup branches", async () => {
     customerOrder.find.mockResolvedValue([{ id: "o1" }]);
     customerOrder.aggregate.mockResolvedValue([{ id: "admin-order" }]);
-    authOrderModel.findById.mockResolvedValue({ id: "sub-order-1" });
+    authOrderModel.findById
+      .mockResolvedValueOnce({ id: "sub-order-1" })
+      .mockResolvedValueOnce({
+        orderId: "507f1f77bcf86cd799439011",
+        payment_status: "paid",
+        delivery_status: "processing",
+      });
     authOrderModel.findByIdAndUpdate.mockResolvedValue({});
+    customerOrder.findByIdAndUpdate.mockResolvedValue({});
 
     const filteredRes = createRes();
     await orderController.get_orders(
@@ -262,5 +271,9 @@ describe("orderController", () => {
     expect(sellerOrderRes.status).toHaveBeenCalledWith(200);
     expect(sellerStatusRes.status).toHaveBeenCalledWith(200);
     expect(adminOrderRes.status).toHaveBeenCalledWith(200);
+    expect(customerOrder.findByIdAndUpdate).toHaveBeenCalledWith(
+      "507f1f77bcf86cd799439011",
+      { delivery_status: "shipped" },
+    );
   });
 });

@@ -11,6 +11,36 @@ const {
 const stripe = require("stripe")(process.env.STRIPE_SECRET);
 
 class orderController {
+  validDeliveryStatuses = [
+    "processing",
+    "shipped",
+    "delivered",
+    "cancelled",
+    "returned",
+    "warehouse",
+  ];
+
+  syncCustomerAndSellerOrderStatus = async ({ orderId, status }) => {
+    const customer = await customerOrder.findById(orderId);
+    if (!customer) {
+      return null;
+    }
+
+    customer.delivery_status = status;
+    await customer.save();
+
+    await authOrderModel.updateMany(
+      {
+        orderId: new ObjectId(orderId),
+      },
+      {
+        delivery_status: status,
+      },
+    );
+
+    return customer;
+  };
+
   paymentCheck = async (id) => {
     try {
       const order = await customerOrder.findById(id);
@@ -268,6 +298,10 @@ class orderController {
       if (!order) {
         return responseReturn(res, 404, { message: "Order not found" });
       }
+      if (!this.validDeliveryStatuses.includes(status)) {
+        return responseReturn(res, 400, { message: "Invalid status." });
+      }
+
       // Prevent delivering unpaid orders
       if (status === "delivered" && order.payment_status !== "paid") {
         return responseReturn(res, 400, {
@@ -280,19 +314,16 @@ class orderController {
           message: "Order already delivered.",
         });
       }
-      // Only allow valid transitions
-      const validStatuses = [
-        "processing",
-        "shipped",
-        "delivered",
-        "cancelled",
-        "returned",
-      ];
-      if (!validStatuses.includes(status)) {
-        return responseReturn(res, 400, { message: "Invalid status." });
-      }
       order.delivery_status = status;
       await order.save();
+      await authOrderModel.updateMany(
+        {
+          orderId: new ObjectId(orderId),
+        },
+        {
+          delivery_status: status,
+        },
+      );
       responseReturn(res, 200, { message: "Order status change success" });
     } catch (error) {
       console.log("get admin status error" + error.message);
@@ -350,7 +381,32 @@ class orderController {
     const { status } = req.body;
 
     try {
+      const order = await authOrderModel.findById(orderId);
+
+      if (!order) {
+        return responseReturn(res, 404, { message: "Order not found" });
+      }
+
+      if (!this.validDeliveryStatuses.includes(status)) {
+        return responseReturn(res, 400, { message: "Invalid status." });
+      }
+
+      if (status === "delivered" && order.payment_status !== "paid") {
+        return responseReturn(res, 400, {
+          message: "Cannot deliver unpaid order.",
+        });
+      }
+
+      if (order.delivery_status === "delivered" && status !== "returned") {
+        return responseReturn(res, 400, {
+          message: "Order already delivered.",
+        });
+      }
+
       await authOrderModel.findByIdAndUpdate(orderId, {
+        delivery_status: status,
+      });
+      await customerOrder.findByIdAndUpdate(order.orderId, {
         delivery_status: status,
       });
       responseReturn(res, 200, {
