@@ -434,13 +434,13 @@ class orderController {
     try {
       await customerOrder.findByIdAndUpdate(orderId, {
         payment_status: "paid",
-        delivery_status: "processing",
+        delivery_status: "pending",
       });
       await authOrderModel.updateMany(
         { orderId: new ObjectId(orderId) },
         {
           payment_status: "paid",
-          delivery_status: "processing",
+          delivery_status: "pending",
         },
       );
       const cuOrder = await customerOrder.findById(orderId);

@@ -20,11 +20,8 @@ const resolveCanonicalStatus = ({ customerPaymentStatus, suborders = [] }) => {
 
   const lastSellerStatus = sortedByLastUpdate[0].delivery_status || "pending";
 
-  if (
-    customerPaymentStatus === "paid" &&
-    ["pending", "placed", "cancelled"].includes(lastSellerStatus)
-  ) {
-    return "processing";
+  if (customerPaymentStatus === "paid" && lastSellerStatus === "cancelled") {
+    return "pending";
   }
 
   return lastSellerStatus;
