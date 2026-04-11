@@ -3,6 +3,7 @@ const customerOrder = require("../../models/customerOrder");
 const myShopWallet = require("../../models/myShopWallet");
 const sellerWallet = require("../../models/sellerWallet");
 const cardModel = require("../../models/cardModel");
+const sellerModel = require("../../models/sellerModel");
 const moment = require("moment");
 const { responseReturn } = require("../../utiles/response");
 const {
@@ -67,6 +68,26 @@ class orderController {
     }
 
     try {
+      const sellerIds = [
+        ...new Set(
+          products
+            .map((item) => item?.sellerId?.toString())
+            .filter(Boolean),
+        ),
+      ];
+
+      const sellers = await sellerModel
+        .find({ _id: { $in: sellerIds } })
+        .select("_id shopInfo")
+        .lean();
+
+      const sellerShippingMap = new Map(
+        sellers.map((seller) => [
+          seller._id.toString(),
+          seller?.shopInfo?.shopName?.trim(),
+        ]),
+      );
+
       const order = await customerOrder.create({
         customerId: userId,
         shippingInfo,
@@ -80,6 +101,10 @@ class orderController {
         const pro = products[i].products;
         const pri = products[i].price;
         const sellerId = products[i].sellerId;
+        const sellerShippingInfo =
+          sellerShippingMap.get(sellerId?.toString()) ||
+          pro?.[0]?.productInfo?.shopName ||
+          "Unknown Warehouse";
         let storePor = [];
         for (let j = 0; j < pro.length; j++) {
           const tempPro = pro[j].productInfo;
@@ -93,7 +118,7 @@ class orderController {
           products: storePor,
           price: pri,
           payment_status: "unpaid",
-          shippingInfo: "Easy Main Warehouse",
+          shippingInfo: sellerShippingInfo,
           delivery_status: "pending",
           date: tempDate,
         });

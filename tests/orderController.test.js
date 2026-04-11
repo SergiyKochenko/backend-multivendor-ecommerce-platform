@@ -30,6 +30,9 @@ jest.mock("../models/sellerWallet", () => ({
 jest.mock("../models/cardModel", () => ({
   findByIdAndDelete: jest.fn(),
 }));
+jest.mock("../models/sellerModel", () => ({
+  find: jest.fn(),
+}));
 
 const orderController = require("../controllers/order/orderController");
 const authOrderModel = require("../models/authOrder");
@@ -37,12 +40,21 @@ const customerOrder = require("../models/customerOrder");
 const myShopWallet = require("../models/myShopWallet");
 const sellerWallet = require("../models/sellerWallet");
 const cardModel = require("../models/cardModel");
+const sellerModel = require("../models/sellerModel");
 const { createRes, createQueryChain } = require("./testHelpers");
 
 describe("orderController", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
+
+  const mockSellerFindResult = (sellers) => {
+    sellerModel.find.mockReturnValue({
+      select: jest.fn().mockReturnValue({
+        lean: jest.fn().mockResolvedValue(sellers),
+      }),
+    });
+  };
 
   test("places an order and clears the cart", async () => {
     const setTimeoutSpy = jest
@@ -58,6 +70,12 @@ describe("orderController", () => {
     authOrderModel.updateMany.mockResolvedValue({});
     authOrderModel.insertMany.mockResolvedValue([]);
     cardModel.findByIdAndDelete.mockResolvedValue({});
+    mockSellerFindResult([
+      {
+        _id: { toString: () => "seller-1" },
+        shopInfo: { shopName: "Seller One Warehouse" },
+      },
+    ]);
 
     const req = {
       body: {
@@ -82,7 +100,11 @@ describe("orderController", () => {
 
     expect(customerOrder.create).toHaveBeenCalled();
     expect(authOrderModel.insertMany).toHaveBeenCalledWith([
-      expect.objectContaining({ sellerId: "seller-1", price: 80 }),
+      expect.objectContaining({
+        sellerId: "seller-1",
+        price: 80,
+        shippingInfo: "Seller One Warehouse",
+      }),
     ]);
     expect(cardModel.findByIdAndDelete).toHaveBeenCalledWith("card-1");
     expect(res.status).toHaveBeenCalledWith(200);
@@ -215,6 +237,7 @@ describe("orderController", () => {
   });
 
   test("covers order lookup helpers and lists", async () => {
+    mockSellerFindResult([]);
     customerOrder.findById
       .mockResolvedValueOnce({ payment_status: "unpaid" })
       .mockResolvedValueOnce({ payment_status: "paid", delivery_status: "cancelled", save: jest.fn() })
