@@ -197,11 +197,48 @@ class productController {
     form.parse(req, async (err, field, files) => {
       const { oldImage, productId } = field;
       const { newImage } = files;
+      const removeImage = field.removeImage === "true";
 
       if (err) {
         responseReturn(res, 400, { error: err.message });
       } else {
         try {
+          const productData = await productModel.findById(productId);
+
+          if (!productData) {
+            return responseReturn(res, 404, { error: "Product Not Found" });
+          }
+
+          let { images } = productData;
+          const index = images.findIndex((img) => img === oldImage);
+
+          if (index < 0) {
+            return responseReturn(res, 404, { error: "Image Not Found" });
+          }
+
+          if (removeImage) {
+            if (images.length <= 1) {
+              return responseReturn(res, 400, {
+                error: "At least one product image is required",
+              });
+            }
+
+            images = images.filter((_, imageIndex) => imageIndex !== index);
+            await productModel.findByIdAndUpdate(productId, { images });
+
+            const product = await productModel.findById(productId);
+            return responseReturn(res, 200, {
+              product,
+              message: "Product Image Removed Successfully",
+            });
+          }
+
+          if (!newImage) {
+            return responseReturn(res, 400, {
+              error: "New image file is required",
+            });
+          }
+
           cloudinary.config({
             cloud_name: process.env.cloud_name,
             api_key: process.env.api_key,
@@ -214,21 +251,19 @@ class productController {
           });
 
           if (result) {
-            let { images } = await productModel.findById(productId);
-            const index = images.findIndex((img) => img === oldImage);
             images[index] = result.url;
             await productModel.findByIdAndUpdate(productId, { images });
 
             const product = await productModel.findById(productId);
-            responseReturn(res, 200, {
+            return responseReturn(res, 200, {
               product,
               message: "Product Image Updated Successfully",
             });
           } else {
-            responseReturn(res, 404, { error: "Image Upload Failed" });
+            return responseReturn(res, 404, { error: "Image Upload Failed" });
           }
         } catch (error) {
-          responseReturn(res, 404, { error: error.message });
+          return responseReturn(res, 404, { error: error.message });
         }
       }
     });

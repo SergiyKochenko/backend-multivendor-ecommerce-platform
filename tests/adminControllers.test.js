@@ -192,7 +192,6 @@ describe("dashboard and catalog controllers", () => {
     mockParse({ oldImage: "old.png", productId: "product-1" }, { newImage: { filepath: "/tmp/new.png" } });
     productModel.findById
       .mockResolvedValueOnce({ images: ["old.png"] })
-      .mockResolvedValueOnce({ id: "product-1" })
       .mockResolvedValueOnce({ id: "product-1" });
     const imageRes = createRes();
     await productController.product_image_update({}, imageRes);
@@ -222,13 +221,31 @@ describe("dashboard and catalog controllers", () => {
 
     mockParse({ oldImage: "old.png", productId: "product-1" }, { newImage: { filepath: "/tmp/new.png" } });
     mockCloudinary.uploader.upload.mockResolvedValue(null);
+    productModel.findById.mockResolvedValueOnce({ images: ["old.png"] });
     const uploadFailRes = createRes();
     await productController.product_image_update({}, uploadFailRes);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    mockParse({ oldImage: "old.png", productId: "product-1", removeImage: "true" }, {});
+    productModel.findById.mockResolvedValueOnce({ images: ["old.png"] });
+    const removeLastImageRes = createRes();
+    await productController.product_image_update({}, removeLastImageRes);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    mockParse({ oldImage: "old.png", productId: "product-1", removeImage: "true" }, {});
+    productModel.findById
+      .mockResolvedValueOnce({ images: ["old.png", "keep.png"] })
+      .mockResolvedValueOnce({ id: "product-1", images: ["keep.png"] });
+    const removeImageRes = createRes();
+    await productController.product_image_update({}, removeImageRes);
+    await new Promise((resolve) => setImmediate(resolve));
 
     expect(defaultListRes.status).toHaveBeenCalledWith(200);
     expect(unauthorizedDeleteRes.status).toHaveBeenCalledWith(404);
     expect(parseErrRes.status).toHaveBeenCalledWith(400);
     expect(uploadFailRes.status).toHaveBeenCalledWith(404);
+    expect(removeLastImageRes.status).toHaveBeenCalledWith(400);
+    expect(removeImageRes.status).toHaveBeenCalledWith(200);
   });
 
   test("returns admin and seller dashboard summaries", async () => {
