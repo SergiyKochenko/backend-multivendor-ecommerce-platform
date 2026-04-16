@@ -197,11 +197,20 @@ describe("dashboard and catalog controllers", () => {
     await productController.product_image_update({}, imageRes);
     await new Promise((resolve) => setImmediate(resolve));
 
+    mockParse({ productId: "product-1", addImage: "true" }, { newImage: { filepath: "/tmp/add.png" } });
+    productModel.findById
+      .mockResolvedValueOnce({ images: ["old.png"] })
+      .mockResolvedValueOnce({ id: "product-1", images: ["old.png", "https://cdn.example/product.png"] });
+    const addImageRes = createRes();
+    await productController.product_image_update({}, addImageRes);
+    await new Promise((resolve) => setImmediate(resolve));
+
     expect(listRes.status).toHaveBeenCalledWith(200);
     expect(getRes.status).toHaveBeenCalledWith(200);
     expect(updateRes.status).toHaveBeenCalledWith(200);
     expect(deleteRes.status).toHaveBeenCalledWith(200);
     expect(imageRes.status).toHaveBeenCalledWith(200);
+    expect(addImageRes.status).toHaveBeenCalledWith(200);
   });
 
   test("covers product alternate branches", async () => {
@@ -240,12 +249,19 @@ describe("dashboard and catalog controllers", () => {
     await productController.product_image_update({}, removeImageRes);
     await new Promise((resolve) => setImmediate(resolve));
 
+    mockParse({ productId: "product-1", addImage: "true" }, {});
+    productModel.findById.mockResolvedValueOnce({ images: ["old.png"] });
+    const addImageNoFileRes = createRes();
+    await productController.product_image_update({}, addImageNoFileRes);
+    await new Promise((resolve) => setImmediate(resolve));
+
     expect(defaultListRes.status).toHaveBeenCalledWith(200);
     expect(unauthorizedDeleteRes.status).toHaveBeenCalledWith(404);
     expect(parseErrRes.status).toHaveBeenCalledWith(400);
     expect(uploadFailRes.status).toHaveBeenCalledWith(404);
     expect(removeLastImageRes.status).toHaveBeenCalledWith(400);
     expect(removeImageRes.status).toHaveBeenCalledWith(200);
+    expect(addImageNoFileRes.status).toHaveBeenCalledWith(400);
   });
 
   test("returns admin and seller dashboard summaries", async () => {

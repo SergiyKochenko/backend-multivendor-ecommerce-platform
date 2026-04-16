@@ -195,9 +195,28 @@ class productController {
     const form = formidable({ multiples: true });
 
     form.parse(req, async (err, field, files) => {
-      const { oldImage, productId } = field;
-      const { newImage } = files;
-      const removeImage = field.removeImage === "true";
+      const normalizeFieldValue = (value) =>
+        Array.isArray(value) ? value[0] : value;
+
+      const parseBooleanField = (value) => {
+        const normalized = normalizeFieldValue(value);
+        if (typeof normalized === "boolean") return normalized;
+        if (typeof normalized === "number") return normalized === 1;
+        if (typeof normalized === "string") {
+          const lower = normalized.trim().toLowerCase();
+          return lower === "true" || lower === "1" || lower === "yes";
+        }
+        return false;
+      };
+
+      const oldImage = normalizeFieldValue(field.oldImage);
+      const productId = normalizeFieldValue(field.productId);
+      const imageIndex = normalizeFieldValue(field.imageIndex);
+      const removeImage = parseBooleanField(field.removeImage);
+      const addImage = parseBooleanField(field.addImage);
+
+      const rawNewImage = files?.newImage;
+      const newImage = Array.isArray(rawNewImage) ? rawNewImage[0] : rawNewImage;
 
       if (err) {
         responseReturn(res, 400, { error: err.message });
@@ -210,7 +229,52 @@ class productController {
           }
 
           let { images } = productData;
-          const index = images.findIndex((img) => img === oldImage);
+
+          if (addImage) {
+            if (!newImage || !newImage.filepath) {
+              return responseReturn(res, 400, {
+                error: "New image file is required",
+              });
+            }
+
+            cloudinary.config({
+              cloud_name: process.env.cloud_name,
+              api_key: process.env.api_key,
+              api_secret: process.env.api_secret,
+              secure: true,
+            });
+
+            const result = await cloudinary.uploader.upload(newImage.filepath, {
+              folder: "products",
+            });
+
+            const uploadedImageUrl = result?.secure_url || result?.url;
+
+            if (uploadedImageUrl) {
+              images.push(uploadedImageUrl);
+              await productModel.findByIdAndUpdate(productId, { images });
+
+              const product = await productModel.findById(productId);
+              return responseReturn(res, 200, {
+                product,
+                message: "Product Image Added Successfully",
+              });
+            }
+
+            return responseReturn(res, 404, { error: "Image Upload Failed" });
+          }
+
+          let index = -1;
+          if (imageIndex !== undefined && imageIndex !== null && imageIndex !== "") {
+            const parsedIndex = Number(imageIndex);
+            if (!Number.isNaN(parsedIndex) && parsedIndex >= 0 && parsedIndex < images.length) {
+              index = parsedIndex;
+            }
+          }
+
+          if (index < 0) {
+            index = images.findIndex((img) => img === oldImage);
+          }
 
           if (index < 0) {
             return responseReturn(res, 404, { error: "Image Not Found" });
@@ -239,6 +303,12 @@ class productController {
             });
           }
 
+          if (!newImage.filepath) {
+            return responseReturn(res, 400, {
+              error: "Invalid image file",
+            });
+          }
+
           cloudinary.config({
             cloud_name: process.env.cloud_name,
             api_key: process.env.api_key,
@@ -250,8 +320,10 @@ class productController {
             folder: "products",
           });
 
-          if (result) {
-            images[index] = result.url;
+          const uploadedImageUrl = result?.secure_url || result?.url;
+
+          if (uploadedImageUrl) {
+            images[index] = uploadedImageUrl;
             await productModel.findByIdAndUpdate(productId, { images });
 
             const product = await productModel.findById(productId);
