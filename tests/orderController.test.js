@@ -33,6 +33,10 @@ jest.mock("../models/cardModel", () => ({
 jest.mock("../models/sellerModel", () => ({
   find: jest.fn(),
 }));
+jest.mock("../models/productModel", () => ({
+  findOneAndUpdate: jest.fn(),
+  updateOne: jest.fn(),
+}));
 
 const orderController = require("../controllers/order/orderController");
 const authOrderModel = require("../models/authOrder");
@@ -41,6 +45,7 @@ const myShopWallet = require("../models/myShopWallet");
 const sellerWallet = require("../models/sellerWallet");
 const cardModel = require("../models/cardModel");
 const sellerModel = require("../models/sellerModel");
+const productModel = require("../models/productModel");
 const { createRes, createQueryChain } = require("./testHelpers");
 
 describe("orderController", () => {
@@ -220,7 +225,12 @@ describe("orderController", () => {
 
   test("confirms an order and creates wallet entries", async () => {
     customerOrder.findByIdAndUpdate.mockResolvedValue({});
-    customerOrder.findById.mockResolvedValue({ price: 120 });
+    customerOrder.findById.mockResolvedValue({
+      payment_status: "unpaid",
+      price: 120,
+      products: [{ _id: "507f1f77bcf86cd799439011", quantity: 2 }],
+    });
+    productModel.findOneAndUpdate.mockResolvedValue({ _id: "507f1f77bcf86cd799439011" });
     authOrderModel.updateMany.mockResolvedValue({});
     authOrderModel.find.mockResolvedValue([{ sellerId: { toString: () => "seller-1" }, price: 80 }]);
     myShopWallet.create.mockResolvedValue({});
@@ -231,9 +241,35 @@ describe("orderController", () => {
 
     await orderController.order_confirm(req, res);
 
+    expect(productModel.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ stock: { $gte: 2 } }),
+      { $inc: { stock: -2 } },
+      { new: true },
+    );
     expect(myShopWallet.create).toHaveBeenCalledWith(expect.objectContaining({ amount: 120 }));
     expect(sellerWallet.create).toHaveBeenCalledWith(expect.objectContaining({ amount: 80 }));
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  test("rejects order confirmation when stock is insufficient", async () => {
+    customerOrder.findById.mockResolvedValue({
+      payment_status: "unpaid",
+      price: 120,
+      products: [{ _id: "507f1f77bcf86cd799439011", quantity: 2 }],
+    });
+    productModel.findOneAndUpdate.mockResolvedValue(null);
+
+    const req = { params: { orderId: "507f1f77bcf86cd799439011" } };
+    const res = createRes();
+
+    await orderController.order_confirm(req, res);
+
+    expect(customerOrder.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(authOrderModel.updateMany).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "Insufficient stock for one or more products" }),
+    );
   });
 
   test("covers order lookup helpers and lists", async () => {

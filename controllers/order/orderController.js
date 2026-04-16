@@ -4,6 +4,7 @@ const myShopWallet = require("../../models/myShopWallet");
 const sellerWallet = require("../../models/sellerWallet");
 const cardModel = require("../../models/cardModel");
 const sellerModel = require("../../models/sellerModel");
+const productModel = require("../../models/productModel");
 const moment = require("moment");
 const { responseReturn } = require("../../utiles/response");
 const {
@@ -46,6 +47,70 @@ class orderController {
   };
 
   // end method
+
+  extractOrderedProducts = (products = []) => {
+    const orderedProducts = [];
+
+    for (let i = 0; i < products.length; i++) {
+      const product = products[i] || {};
+      const productId = product._id || product.productId || product.id;
+      const quantity = Number(product.quantity || 0);
+
+      if (productId && Number.isFinite(quantity) && quantity > 0) {
+        orderedProducts.push({
+          productId: productId.toString(),
+          quantity,
+        });
+      }
+    }
+
+    return orderedProducts;
+  };
+
+  deductStockForProducts = async (orderedProducts = []) => {
+    const updatedProducts = [];
+
+    for (let i = 0; i < orderedProducts.length; i++) {
+      const item = orderedProducts[i];
+
+      const updatedProduct = await productModel.findOneAndUpdate(
+        {
+          _id: new ObjectId(item.productId),
+          stock: { $gte: item.quantity },
+        },
+        {
+          $inc: { stock: -item.quantity },
+        },
+        {
+          new: true,
+        },
+      );
+
+      if (!updatedProduct) {
+        for (let j = 0; j < updatedProducts.length; j++) {
+          await productModel.updateOne(
+            {
+              _id: new ObjectId(updatedProducts[j].productId),
+            },
+            {
+              $inc: { stock: updatedProducts[j].quantity },
+            },
+          );
+        }
+
+        return {
+          success: false,
+          failedProductId: item.productId,
+        };
+      }
+
+      updatedProducts.push(item);
+    }
+
+    return {
+      success: true,
+    };
+  };
 
   place_order = async (req, res) => {
     const { price, products, shipping_fee, shippingInfo, userId } = req.body;
@@ -457,6 +522,24 @@ class orderController {
   order_confirm = async (req, res) => {
     const { orderId } = req.params;
     try {
+      const cuOrder = await customerOrder.findById(orderId);
+      if (!cuOrder) {
+        return responseReturn(res, 404, { message: "Order not found" });
+      }
+
+      if (cuOrder.payment_status === "paid") {
+        return responseReturn(res, 200, { message: "success" });
+      }
+
+      const orderedProducts = this.extractOrderedProducts(cuOrder.products);
+      const stockUpdateResult = await this.deductStockForProducts(orderedProducts);
+
+      if (!stockUpdateResult.success) {
+        return responseReturn(res, 409, {
+          message: "Insufficient stock for one or more products",
+        });
+      }
+
       await customerOrder.findByIdAndUpdate(orderId, {
         payment_status: "paid",
         delivery_status: "pending",
@@ -468,8 +551,6 @@ class orderController {
           delivery_status: "pending",
         },
       );
-      const cuOrder = await customerOrder.findById(orderId);
-
       const auOrder = await authOrderModel.find({
         orderId: new ObjectId(orderId),
       });

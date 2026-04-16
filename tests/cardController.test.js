@@ -12,9 +12,13 @@ jest.mock("../models/wishlistModel", () => ({
   find: jest.fn(),
   findByIdAndDelete: jest.fn(),
 }));
+jest.mock("../models/productModel", () => ({
+  findById: jest.fn(),
+}));
 
 const cardModel = require("../models/cardModel");
 const wishlistModel = require("../models/wishlistModel");
+const productModel = require("../models/productModel");
 const cardController = require("../controllers/home/cardController");
 const { createRes } = require("./testHelpers");
 
@@ -67,7 +71,12 @@ describe("cardController", () => {
   });
 
   test("increments and decrements quantity", async () => {
-    cardModel.findById.mockResolvedValue({ quantity: 2 });
+    cardModel.findById
+      .mockResolvedValueOnce({ quantity: 2, productId: "product-1" })
+      .mockResolvedValueOnce({ quantity: 2, productId: "product-1" });
+    productModel.findById.mockReturnValue({
+      select: jest.fn().mockResolvedValue({ stock: 5 }),
+    });
     cardModel.findByIdAndUpdate.mockResolvedValue({});
 
     const req = { params: { card_id: "card-1" } };
@@ -78,6 +87,24 @@ describe("cardController", () => {
 
     expect(cardModel.findByIdAndUpdate).toHaveBeenCalledWith("card-1", { quantity: 3 });
     expect(cardModel.findByIdAndUpdate).toHaveBeenCalledWith("card-1", { quantity: 1 });
+  });
+
+  test("prevents increment when stock limit is reached", async () => {
+    cardModel.findById.mockResolvedValue({ quantity: 5, productId: "product-1" });
+    productModel.findById.mockReturnValue({
+      select: jest.fn().mockResolvedValue({ stock: 5 }),
+    });
+
+    const req = { params: { card_id: "card-1" } };
+    const res = createRes();
+
+    await cardController.quantity_inc(req, res);
+
+    expect(cardModel.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ error: "Stock limit reached" }),
+    );
   });
 
   test("manages wishlist entries", async () => {

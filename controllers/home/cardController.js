@@ -4,6 +4,7 @@ const {
   mongo: { ObjectId },
 } = require("mongoose");
 const wishlistModel = require("../../models/wishlistModel");
+const productModel = require("../../models/productModel");
 
 class cardController {
   add_to_card = async (req, res) => {
@@ -162,9 +163,23 @@ class cardController {
   quantity_inc = async (req, res) => {
     const { card_id } = req.params;
     try {
-      const product = await cardModel.findById(card_id);
-      const { quantity } = product;
-      await cardModel.findByIdAndUpdate(card_id, { quantity: quantity + 1 });
+      const cardProduct = await cardModel.findById(card_id);
+      if (!cardProduct) {
+        return responseReturn(res, 404, { error: "Cart item not found" });
+      }
+
+      const product = await productModel.findById(cardProduct.productId).select("stock");
+      if (!product) {
+        return responseReturn(res, 404, { error: "Product not found" });
+      }
+
+      if (cardProduct.quantity >= product.stock) {
+        return responseReturn(res, 400, { error: "Stock limit reached" });
+      }
+
+      await cardModel.findByIdAndUpdate(card_id, {
+        quantity: cardProduct.quantity + 1,
+      });
       responseReturn(res, 200, { message: "Qty Updated" });
     } catch (error) {
       console.log(error.message);
@@ -175,9 +190,18 @@ class cardController {
   quantity_dec = async (req, res) => {
     const { card_id } = req.params;
     try {
-      const product = await cardModel.findById(card_id);
-      const { quantity } = product;
-      await cardModel.findByIdAndUpdate(card_id, { quantity: quantity - 1 });
+      const cardProduct = await cardModel.findById(card_id);
+      if (!cardProduct) {
+        return responseReturn(res, 404, { error: "Cart item not found" });
+      }
+
+      if (cardProduct.quantity <= 1) {
+        return responseReturn(res, 400, { error: "Minimum quantity is 1" });
+      }
+
+      await cardModel.findByIdAndUpdate(card_id, {
+        quantity: cardProduct.quantity - 1,
+      });
       responseReturn(res, 200, { message: "Qty Updated" });
     } catch (error) {
       console.log(error.message);
