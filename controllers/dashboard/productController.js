@@ -1,8 +1,13 @@
 const formidable = require("formidable");
 const { responseReturn } = require("../../utiles/response");
-const cloudinary = require("cloudinary").v2;
 const productModel = require("../../models/productModel");
 const sellerModel = require("../../models/sellerModel");
+const {
+  createMediaKey,
+  deleteMedia,
+  uploadMedia,
+} = require("../../services/mediaStorage");
+const { deleteMediaIfUnreferenced } = require("../../services/mediaReferences");
 
 class productController {
   add_product = async (req, res) => {
@@ -10,18 +15,16 @@ class productController {
     const form = formidable({ multiples: true });
 
     form.parse(req, async (err, field, files) => {
+      if (err) {
+        return responseReturn(res, 400, { error: err.message });
+      }
+
       let { name, category, description, stock, price, discount, brand } = field;
 
-      let { images } = files;
+      let { images } = files || {};
       name = name.trim();
       const slug = name.split(" ").join("-");
-
-      cloudinary.config({
-        cloud_name: process.env.cloud_name,
-        api_key: process.env.api_key,
-        api_secret: process.env.api_secret,
-        secure: true,
-      });
+      const uploadedUrls = [];
 
       try {
         const seller = await sellerModel.findById(id);
@@ -34,16 +37,22 @@ class productController {
 
         let allImageUrl = [];
 
+        if (!images) {
+          return responseReturn(res, 400, { error: "At least one product image is required" });
+        }
         if (!Array.isArray(images)) {
           images = [images];
         }
 
         for (let i = 0; i < images.length; i++) {
-          const result = await cloudinary.uploader.upload(images[i].filepath, {
-            folder: "products",
-          });
+          const result = await uploadMedia(
+            images[i],
+            "products",
+            createMediaKey("products", id, images[i]),
+          );
 
           allImageUrl.push(result.url);
+          uploadedUrls.push(result.url);
         }
 
         await productModel.create({
@@ -61,6 +70,13 @@ class productController {
         });
         responseReturn(res, 201, { message: "Product Added Successfully" });
       } catch (error) {
+        for (const url of uploadedUrls) {
+          try {
+            await deleteMedia(url);
+          } catch (cleanupError) {
+            console.error("Unable to clean up an incomplete product upload:", cleanupError.message);
+          }
+        }
         responseReturn(res, 500, { error: error.message });
       }
     });
@@ -174,7 +190,7 @@ class productController {
 
   // End Method
 
-   delete_product = async (req, res) => {
+  delete_product = async (req, res) => {
     const { productId } = req.params;
     const { id } = req; // seller id from auth middleware
     try {
@@ -183,6 +199,13 @@ class productController {
         return responseReturn(res, 404, { error: 'Product not found or unauthorized' });
       }
       await productModel.deleteOne({ _id: productId });
+      for (const image of product.images || []) {
+        try {
+          await deleteMediaIfUnreferenced(image);
+        } catch (cleanupError) {
+          console.error("Unable to clean up a deleted product image:", cleanupError.message);
+        }
+      }
       responseReturn(res, 200, { message: 'Product deleted successfully' });
     } catch (error) {
       responseReturn(res, 500, { error: error.message });
@@ -195,6 +218,10 @@ class productController {
     const form = formidable({ multiples: true });
 
     form.parse(req, async (err, field, files) => {
+      if (err) {
+        return responseReturn(res, 400, { error: err.message });
+      }
+
       const normalizeFieldValue = (value) =>
         Array.isArray(value) ? value[0] : value;
 
@@ -218,17 +245,17 @@ class productController {
       const rawNewImage = files?.newImage;
       const newImage = Array.isArray(rawNewImage) ? rawNewImage[0] : rawNewImage;
 
-      if (err) {
-        responseReturn(res, 400, { error: err.message });
-      } else {
-        try {
-          const productData = await productModel.findById(productId);
+      try {
+          const productData = await productModel.findOne({
+            _id: productId,
+            sellerId: req.id,
+          });
 
           if (!productData) {
             return responseReturn(res, 404, { error: "Product Not Found" });
           }
 
-          let { images } = productData;
+          let images = [...(productData.images || [])];
 
           if (addImage) {
             if (!newImage || !newImage.filepath) {
@@ -237,22 +264,22 @@ class productController {
               });
             }
 
-            cloudinary.config({
-              cloud_name: process.env.cloud_name,
-              api_key: process.env.api_key,
-              api_secret: process.env.api_secret,
-              secure: true,
-            });
+            const result = await uploadMedia(
+              newImage,
+              "products",
+              createMediaKey("products", productId, newImage),
+            );
 
-            const result = await cloudinary.uploader.upload(newImage.filepath, {
-              folder: "products",
-            });
-
-            const uploadedImageUrl = result?.secure_url || result?.url;
+            const uploadedImageUrl = result?.url;
 
             if (uploadedImageUrl) {
               images.push(uploadedImageUrl);
-              await productModel.findByIdAndUpdate(productId, { images });
+              try {
+                await productModel.findByIdAndUpdate(productId, { images });
+              } catch (databaseError) {
+                await deleteMedia(uploadedImageUrl);
+                throw databaseError;
+              }
 
               const product = await productModel.findById(productId);
               return responseReturn(res, 200, {
@@ -289,6 +316,11 @@ class productController {
 
             images = images.filter((_, imageIndex) => imageIndex !== index);
             await productModel.findByIdAndUpdate(productId, { images });
+            try {
+              await deleteMediaIfUnreferenced(productData.images[index]);
+            } catch (cleanupError) {
+              console.error("Unable to clean up the removed product image:", cleanupError.message);
+            }
 
             const product = await productModel.findById(productId);
             return responseReturn(res, 200, {
@@ -309,22 +341,28 @@ class productController {
             });
           }
 
-          cloudinary.config({
-            cloud_name: process.env.cloud_name,
-            api_key: process.env.api_key,
-            api_secret: process.env.api_secret,
-            secure: true,
-          });
+          const result = await uploadMedia(
+            newImage,
+            "products",
+            createMediaKey("products", productId, newImage),
+          );
 
-          const result = await cloudinary.uploader.upload(newImage.filepath, {
-            folder: "products",
-          });
-
-          const uploadedImageUrl = result?.secure_url || result?.url;
+          const uploadedImageUrl = result?.url;
 
           if (uploadedImageUrl) {
+            const previousImageUrl = images[index];
             images[index] = uploadedImageUrl;
-            await productModel.findByIdAndUpdate(productId, { images });
+            try {
+              await productModel.findByIdAndUpdate(productId, { images });
+            } catch (databaseError) {
+              await deleteMedia(uploadedImageUrl);
+              throw databaseError;
+            }
+            try {
+              await deleteMediaIfUnreferenced(previousImageUrl);
+            } catch (cleanupError) {
+              console.error("Unable to clean up the replaced product image:", cleanupError.message);
+            }
 
             const product = await productModel.findById(productId);
             return responseReturn(res, 200, {
@@ -334,9 +372,8 @@ class productController {
           } else {
             return responseReturn(res, 404, { error: "Image Upload Failed" });
           }
-        } catch (error) {
-          return responseReturn(res, 404, { error: error.message });
-        }
+      } catch (error) {
+        return responseReturn(res, 404, { error: error.message });
       }
     });
   };

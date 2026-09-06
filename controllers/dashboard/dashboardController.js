@@ -11,8 +11,13 @@ const bannerModel = require("../../models/bannerModel");
 const {
   mongo: { ObjectId },
 } = require("mongoose");
-const cloudinary = require("cloudinary").v2;
 const formidable = require("formidable");
+const {
+  createMediaKey,
+  deleteMedia,
+  uploadMedia,
+} = require("../../services/mediaStorage");
+const { deleteMediaIfUnreferenced } = require("../../services/mediaReferences");
 
 class dashboardController {
   get_admin_dashboard_data = async (req, res) => {
@@ -292,26 +297,37 @@ class dashboardController {
   add_banner = async (req, res) => {
     const form = formidable({ multiples: true });
     form.parse(req, async (err, field, files) => {
-      const { productId } = field;
-      const { mainban } = files;
+      if (err) {
+        return responseReturn(res, 400, { error: err.message });
+      }
 
-      cloudinary.config({
-        cloud_name: process.env.cloud_name,
-        api_key: process.env.api_key,
-        api_secret: process.env.api_secret,
-        secure: true,
-      });
+      const { productId } = field;
+      const rawMainBanner = files?.mainban;
+      const mainban = Array.isArray(rawMainBanner)
+        ? rawMainBanner[0]
+        : rawMainBanner;
 
       try {
+        if (!mainban?.filepath) {
+          return responseReturn(res, 400, { error: "Banner image is required" });
+        }
         const { slug } = await productModel.findById(productId);
-        const result = await cloudinary.uploader.upload(mainban.filepath, {
-          folder: "banners",
-        });
-        const banner = await bannerModel.create({
-          productId,
-          banner: result.url,
-          link: slug,
-        });
+        const result = await uploadMedia(
+          mainban,
+          "banners",
+          createMediaKey("banners", productId, mainban),
+        );
+        let banner;
+        try {
+          banner = await bannerModel.create({
+            productId,
+            banner: result.url,
+            link: slug,
+          });
+        } catch (databaseError) {
+          await deleteMedia(result.url);
+          throw databaseError;
+        }
         responseReturn(res, 200, { banner, message: "Banner Add Success" });
       } catch (error) {
         responseReturn(res, 500, { error: error.message });
@@ -338,29 +354,44 @@ class dashboardController {
     const form = formidable({});
 
     form.parse(req, async (err, _, files) => {
-      const { mainban } = files;
+      if (err) {
+        return responseReturn(res, 400, { error: err.message });
+      }
 
-      cloudinary.config({
-        cloud_name: process.env.cloud_name,
-        api_key: process.env.api_key,
-        api_secret: process.env.api_secret,
-        secure: true,
-      });
+      const rawMainBanner = files?.mainban;
+      const mainban = Array.isArray(rawMainBanner)
+        ? rawMainBanner[0]
+        : rawMainBanner;
 
       try {
+        if (!mainban?.filepath) {
+          return responseReturn(res, 400, { error: "Banner image is required" });
+        }
         let banner = await bannerModel.findById(bannerId);
-        let temp = banner.banner.split("/");
-        temp = temp[temp.length - 1];
-        const imageName = temp.split(".")[0];
-        await cloudinary.uploader.destroy(imageName);
+        if (!banner) {
+          return responseReturn(res, 404, { error: "Banner not found" });
+        }
 
-        const { url } = await cloudinary.uploader.upload(mainban.filepath, {
-          folder: "banners",
-        });
+        const previousBannerUrl = banner.banner;
+        const { url } = await uploadMedia(
+          mainban,
+          "banners",
+          createMediaKey("banners", bannerId, mainban),
+        );
 
-        await bannerModel.findByIdAndUpdate(bannerId, {
-          banner: url,
-        });
+        try {
+          await bannerModel.findByIdAndUpdate(bannerId, {
+            banner: url,
+          });
+        } catch (databaseError) {
+          await deleteMedia(url);
+          throw databaseError;
+        }
+        try {
+          await deleteMediaIfUnreferenced(previousBannerUrl);
+        } catch (cleanupError) {
+          console.error("Unable to clean up the previous banner image:", cleanupError.message);
+        }
 
         banner = await bannerModel.findById(bannerId);
         responseReturn(res, 200, { banner, message: "Banner Updated Success" });

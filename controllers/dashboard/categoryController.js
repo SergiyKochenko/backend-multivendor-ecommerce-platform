@@ -1,7 +1,12 @@
 const formidable = require("formidable");
 const { responseReturn } = require("../../utiles/response");
-const cloudinary = require("cloudinary").v2;
 const categoryModel = require("../../models/categoryModel");
+const {
+  createMediaKey,
+  deleteMedia,
+  uploadMedia,
+} = require("../../services/mediaStorage");
+const { deleteMediaIfUnreferenced } = require("../../services/mediaReferences");
 
 class categoryController {
   add_category = async (req, res) => {
@@ -11,28 +16,34 @@ class categoryController {
         responseReturn(res, 404, { error: "something went wrong" });
       } else {
         let { name } = fields;
-        let { image } = files;
+        const rawImage = files?.image;
+        const image = Array.isArray(rawImage) ? rawImage[0] : rawImage;
         name = name.trim();
         const slug = name.split(" ").join("-");
 
-        cloudinary.config({
-          cloud_name: process.env.cloud_name,
-          api_key: process.env.api_key,
-          api_secret: process.env.api_secret,
-          secure: true,
-        });
-
         try {
-          const result = await cloudinary.uploader.upload(image.filepath, {
-            folder: "categorys",
-          });
+          if (!image?.filepath) {
+            return responseReturn(res, 400, { error: "Image file is required" });
+          }
+
+          const result = await uploadMedia(
+            image,
+            "categorys",
+            createMediaKey("categorys", "new", image),
+          );
 
           if (result) {
-            const category = await categoryModel.create({
-              name,
-              slug,
-              image: result.url,
-            });
+            let category;
+            try {
+              category = await categoryModel.create({
+                name,
+                slug,
+                image: result.url,
+              });
+            } catch (databaseError) {
+              await deleteMedia(result.url);
+              throw databaseError;
+            }
             responseReturn(res, 201, {
               category,
               message: "Category Added Successfully",
@@ -99,25 +110,26 @@ class categoryController {
         responseReturn(res, 404, { error: "something went wrong" });
       } else {
         let { name } = fields;
-        let { image } = files;
+        const rawImage = files?.image;
+        const image = Array.isArray(rawImage) ? rawImage[0] : rawImage;
         const { id } = req.params;
 
         name = name.trim();
         const slug = name.split(" ").join("-");
 
         try {
+          const existingCategory = await categoryModel.findById(id);
+          if (!existingCategory) {
+            return responseReturn(res, 404, { error: "Category not found" });
+          }
+
           let result = null;
           if (image) {
-            cloudinary.config({
-              cloud_name: process.env.cloud_name,
-              api_key: process.env.api_key,
-              api_secret: process.env.api_secret,
-              secure: true,
-            });
-
-            result = await cloudinary.uploader.upload(image.filepath, {
-              folder: "categorys",
-            });
+            result = await uploadMedia(
+              image,
+              "categorys",
+              createMediaKey("categorys", id, image),
+            );
           }
 
           const updateData = {
@@ -129,11 +141,22 @@ class categoryController {
             updateData.image = result.url;
           }
 
-          const category = await categoryModel.findByIdAndUpdate(
-            id,
-            updateData,
-            { new: true },
-          );
+          let category;
+          try {
+            category = await categoryModel.findByIdAndUpdate(id, updateData, {
+              new: true,
+            });
+          } catch (databaseError) {
+            if (result) await deleteMedia(result.url);
+            throw databaseError;
+          }
+          if (result && existingCategory.image !== result.url) {
+            try {
+              await deleteMediaIfUnreferenced(existingCategory.image);
+            } catch (cleanupError) {
+              console.error("Unable to clean up the previous category image:", cleanupError.message);
+            }
+          }
           responseReturn(res, 200, {
             category,
             message: "Category Updated successfully",
@@ -148,13 +171,22 @@ class categoryController {
   // end method
 
   deleteCategory = async (req, res) => {
+    const categoryId = req.params.id;
     try {
-      const categoryId = req.params.id;
+      const existingCategory = await categoryModel.findById(categoryId);
+      if (!existingCategory) {
+        return res.status(404).json({ message: "Category not found" });
+      }
+
       const deleteCategory = await categoryModel.findByIdAndDelete(categoryId);
 
       if (!deleteCategory) {
-        console.log(`Cateogry with id ${categoryId} not found`);
         return res.status(404).json({ message: "Category not found" });
+      }
+      try {
+        await deleteMediaIfUnreferenced(existingCategory.image);
+      } catch (cleanupError) {
+        console.error("Unable to clean up the deleted category image:", cleanupError.message);
       }
       res.status(200).json({ message: "Category deleted successfully" });
     } catch (error) {

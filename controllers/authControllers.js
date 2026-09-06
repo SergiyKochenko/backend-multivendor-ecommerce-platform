@@ -5,8 +5,13 @@ const sellerCustomerModel = require("../models/chat/sellerCustomerModel");
 const { responseReturn } = require("../utiles/response");
 const bcrpty = require("bcrypt");
 const { createToken } = require("../utiles/tokenCreate");
-const cloudinary = require("cloudinary").v2;
 const formidable = require("formidable");
+const {
+  createMediaKey,
+  deleteMedia,
+  uploadMedia,
+} = require("../services/mediaStorage");
+const { deleteMediaIfUnreferenced } = require("../services/mediaReferences");
 
 class authControllers {
   admin_login = async (req, res) => {
@@ -124,22 +129,43 @@ class authControllers {
     const { id } = req;
     const form = formidable({ multiples: true });
     form.parse(req, async (err, _, files) => {
-      cloudinary.config({
-        cloud_name: process.env.cloud_name,
-        api_key: process.env.api_key,
-        api_secret: process.env.api_secret,
-        secure: true,
-      });
-      const { image } = files;
+      if (err) {
+        return responseReturn(res, 400, { error: err.message });
+      }
+
+      const rawImage = files?.image;
+      const image = Array.isArray(rawImage) ? rawImage[0] : rawImage;
+      if (!image?.filepath) {
+        return responseReturn(res, 400, { error: "Image file is required" });
+      }
 
       try {
-        const result = await cloudinary.uploader.upload(image.filepath, {
-          folder: "profile",
-        });
+        const existingSeller = await sellerModel.findById(id);
+        if (!existingSeller) {
+          return responseReturn(res, 404, { error: "Seller not found" });
+        }
+
+        const result = await uploadMedia(
+          image,
+          "profile",
+          createMediaKey("profile", id, image),
+        );
         if (result) {
-          await sellerModel.findByIdAndUpdate(id, {
-            image: result.url,
-          });
+          try {
+            await sellerModel.findByIdAndUpdate(id, {
+              image: result.url,
+            });
+          } catch (databaseError) {
+            await deleteMedia(result.url);
+            throw databaseError;
+          }
+          if (existingSeller.image && existingSeller.image !== result.url) {
+            try {
+              await deleteMediaIfUnreferenced(existingSeller.image);
+            } catch (cleanupError) {
+              console.error("Unable to clean up the previous profile image:", cleanupError.message);
+            }
+          }
           const userInfo = await sellerModel.findById(id);
           responseReturn(res, 201, {
             message: "Profile Image Upload Successfully",

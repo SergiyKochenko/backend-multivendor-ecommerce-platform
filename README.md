@@ -58,7 +58,7 @@ This backend powers an ecommerce platform with:
 - MongoDB, Mongoose
 - Socket.io
 - JWT, bcrypt, cookie-parser
-- Cloudinary (image upload)
+- Cloudinary and Cloudflare R2 (media storage during migration)
 - Stripe (payments)
 - dotenv, cors, body-parser
 
@@ -77,13 +77,32 @@ This backend powers an ecommerce platform with:
    ```env
    DB_URL=your_mongodb_uri
    JWT_SECRET=your_jwt_secret
-   CLOUDINARY_URL=your_cloudinary_url
+   MEDIA_STORAGE=cloudinary
+   cloud_name=your_cloudinary_cloud_name
+   api_key=your_cloudinary_api_key
+   api_secret=your_cloudinary_api_secret
+   CLOUDFLARE_R2_ACCOUNT_ID=your_cloudflare_account_id
+   CLOUDFLARE_R2_ACCESS_KEY_ID=your_r2_access_key_id
+   CLOUDFLARE_R2_SECRET_ACCESS_KEY=your_r2_secret_access_key
+   CLOUDFLARE_R2_BUCKET=your_r2_bucket_name
+   CLOUDFLARE_R2_PUBLIC_URL=https://media.example.com
    STRIPE_SECRET=your_stripe_secret
    ```
 4. Start the development server:
    ```bash
    npm run server
    ```
+
+### Cloudinary to R2 migration
+
+Keep `MEDIA_STORAGE=cloudinary` until the R2 bucket and public URL are ready.
+R2 credentials are backend-only and must not be added to either frontend `.env`.
+
+1. Set `MEDIA_STORAGE=r2` in the backend environment.
+2. Run `npm run migrate:cloudinary-to-r2` from `backend/`.
+3. Review `scripts/cloudinary-migration-failures.jsonl`.
+4. Repeat the command if needed; deterministic keys and object checks prevent duplicates.
+5. Verify dashboard and storefront media flows before removing Cloudinary.
 
 ## Usage
 

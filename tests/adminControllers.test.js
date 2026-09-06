@@ -17,6 +17,7 @@ jest.mock("cloudinary", () => ({
 jest.mock("../models/categoryModel", () => ({
   create: jest.fn(),
   find: jest.fn(),
+  findById: jest.fn(),
   findByIdAndUpdate: jest.fn(),
   findByIdAndDelete: jest.fn(),
 }));
@@ -106,6 +107,7 @@ describe("dashboard and catalog controllers", () => {
     await categoryController.get_category({ query: { page: "1", parPage: "10", searchValue: "phones" } }, listRes);
 
     mockParse({ name: " Updated Phones " }, {}, null);
+    categoryModel.findById.mockResolvedValue({ image: "old-category.png" });
     categoryModel.findByIdAndUpdate.mockResolvedValue({ id: "category-1" });
     const updateRes = createRes();
     await categoryController.update_category({ params: { id: "category-1" } }, updateRes);
@@ -135,9 +137,11 @@ describe("dashboard and catalog controllers", () => {
 
     mockParse({ name: " Phones " }, { image: { filepath: "/tmp/image.png" } });
     mockCloudinary.uploader.upload.mockResolvedValue({ url: "https://cdn.example/image.png" });
+    categoryModel.findById.mockResolvedValue({ image: "old-category.png" });
     categoryModel.findByIdAndUpdate.mockResolvedValue({ id: "category-1" });
     const withImageRes = createRes();
     await categoryController.update_category({ params: { id: "category-1" } }, withImageRes);
+    await new Promise((resolve) => setImmediate(resolve));
 
     categoryModel.findByIdAndDelete.mockResolvedValue(null);
     const notFoundRes = createRes();
@@ -184,23 +188,25 @@ describe("dashboard and catalog controllers", () => {
     const updateRes = createRes();
     await productController.product_update({ body: { name: "Updated Phone", description: "Updated", stock: 9, price: 450, category: "phones", discount: 5, brand: "Brand", productId: "product-1" } }, updateRes);
 
-    productModel.findOne.mockResolvedValue({ id: "product-1" });
+    productModel.findOne
+      .mockResolvedValueOnce({ id: "product-1", images: [] })
+      .mockResolvedValueOnce({ images: ["old.png"] })
+      .mockResolvedValueOnce({ images: ["old.png"] });
     productModel.deleteOne.mockResolvedValue({});
     const deleteRes = createRes();
     await productController.delete_product({ params: { productId: "product-1" }, id: "seller-1" }, deleteRes);
 
     mockParse({ oldImage: "old.png", productId: "product-1" }, { newImage: { filepath: "/tmp/new.png" } });
-    productModel.findById
-      .mockResolvedValueOnce({ images: ["old.png"] })
-      .mockResolvedValueOnce({ id: "product-1" });
+    productModel.findById.mockResolvedValueOnce({ id: "product-1" });
     const imageRes = createRes();
     await productController.product_image_update({}, imageRes);
     await new Promise((resolve) => setImmediate(resolve));
 
     mockParse({ productId: "product-1", addImage: "true" }, { newImage: { filepath: "/tmp/add.png" } });
-    productModel.findById
-      .mockResolvedValueOnce({ images: ["old.png"] })
-      .mockResolvedValueOnce({ id: "product-1", images: ["old.png", "https://cdn.example/product.png"] });
+    productModel.findById.mockResolvedValueOnce({
+      id: "product-1",
+      images: ["old.png", "https://cdn.example/product.png"],
+    });
     const addImageRes = createRes();
     await productController.product_image_update({}, addImageRes);
     await new Promise((resolve) => setImmediate(resolve));
@@ -220,7 +226,12 @@ describe("dashboard and catalog controllers", () => {
     const defaultListRes = createRes();
     await productController.products_get({ id: "seller-1", query: { page: "1", parPage: "10" } }, defaultListRes);
 
-    productModel.findOne.mockResolvedValue(null);
+    productModel.findOne
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ images: ["old.png"] })
+      .mockResolvedValueOnce({ images: ["old.png"] })
+      .mockResolvedValueOnce({ images: ["old.png", "keep.png"] })
+      .mockResolvedValueOnce({ images: ["old.png"] });
     const unauthorizedDeleteRes = createRes();
     await productController.delete_product({ params: { productId: "p1" }, id: "seller-1" }, unauthorizedDeleteRes);
 
@@ -230,27 +241,25 @@ describe("dashboard and catalog controllers", () => {
 
     mockParse({ oldImage: "old.png", productId: "product-1" }, { newImage: { filepath: "/tmp/new.png" } });
     mockCloudinary.uploader.upload.mockResolvedValue(null);
-    productModel.findById.mockResolvedValueOnce({ images: ["old.png"] });
     const uploadFailRes = createRes();
     await productController.product_image_update({}, uploadFailRes);
     await new Promise((resolve) => setImmediate(resolve));
 
     mockParse({ oldImage: "old.png", productId: "product-1", removeImage: "true" }, {});
-    productModel.findById.mockResolvedValueOnce({ images: ["old.png"] });
     const removeLastImageRes = createRes();
     await productController.product_image_update({}, removeLastImageRes);
     await new Promise((resolve) => setImmediate(resolve));
 
     mockParse({ oldImage: "old.png", productId: "product-1", removeImage: "true" }, {});
-    productModel.findById
-      .mockResolvedValueOnce({ images: ["old.png", "keep.png"] })
-      .mockResolvedValueOnce({ id: "product-1", images: ["keep.png"] });
+    productModel.findById.mockResolvedValueOnce({
+      id: "product-1",
+      images: ["keep.png"],
+    });
     const removeImageRes = createRes();
     await productController.product_image_update({}, removeImageRes);
     await new Promise((resolve) => setImmediate(resolve));
 
     mockParse({ productId: "product-1", addImage: "true" }, {});
-    productModel.findById.mockResolvedValueOnce({ images: ["old.png"] });
     const addImageNoFileRes = createRes();
     await productController.product_image_update({}, addImageNoFileRes);
     await new Promise((resolve) => setImmediate(resolve));
