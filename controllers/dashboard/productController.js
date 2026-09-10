@@ -11,7 +11,10 @@ const {
   deleteMedia,
   uploadMedia,
 } = require("../../services/mediaStorage");
-const { deleteMediaIfUnreferenced } = require("../../services/mediaReferences");
+const {
+  deleteMediaIfUnreferenced,
+  deleteMediaAndPreserveOrderHistory,
+} = require("../../services/mediaReferences");
 
 class productController {
   add_product = async (req, res) => {
@@ -239,14 +242,16 @@ class productController {
       }
     }
 
-    // Delete every product image from Cloudflare R2, unless another record still references it.
+    // Permanently delete every product/banner image from Cloudflare R2. Any historical order that
+    // snapshotted one of these images has its copy swapped for a placeholder first, so order history
+    // keeps rendering instead of showing a broken image.
     const mediaUrls = [
       ...(product.images || []),
       ...banners.map((banner) => banner.banner).filter(Boolean),
     ];
     for (const url of mediaUrls) {
       try {
-        await deleteMediaIfUnreferenced(url);
+        await deleteMediaAndPreserveOrderHistory(url);
       } catch (cleanupError) {
         console.error(`Failed to delete media "${url}" for product ${productId} from Cloudflare R2:`, cleanupError.message);
       }

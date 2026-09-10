@@ -233,20 +233,18 @@ describe("dashboard and catalog controllers", () => {
     expect(addImageRes.status).toHaveBeenCalledWith(200);
   });
 
-  test("delete_product cascades related records and cleans up Cloudflare R2 media", async () => {
-    process.env.MEDIA_STORAGE = "r2";
-    process.env.CLOUDFLARE_R2_ACCOUNT_ID = "account";
-    process.env.CLOUDFLARE_R2_ACCESS_KEY_ID = "key";
-    process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY = "secret";
-    process.env.CLOUDFLARE_R2_BUCKET = "bucket";
-    process.env.CLOUDFLARE_R2_PUBLIC_URL = "https://media.example.com";
+  test("delete_product cascades related records and force-deletes media via Cloudinary/R2 helper", async () => {
+    mockCloudinary.uploader.destroy.mockResolvedValue({ result: "ok" });
 
     productModel.findOne.mockResolvedValueOnce({
       id: "product-1",
-      images: ["https://media.example.com/products/a.png", "https://media.example.com/products/b.png"],
+      images: [
+        "https://res.cloudinary.com/demo/image/upload/v1/products/a.png",
+        "https://res.cloudinary.com/demo/image/upload/v1/products/b.png",
+      ],
     });
     productModel.deleteOne.mockResolvedValue({});
-    bannerModel.find.mockResolvedValue([{ banner: "https://media.example.com/banners/c.png" }]);
+    bannerModel.find.mockResolvedValue([{ banner: "https://res.cloudinary.com/demo/image/upload/v1/banners/c.png" }]);
     reviewModel.deleteMany.mockResolvedValue({ deletedCount: 2 });
     cardModel.deleteMany.mockResolvedValue({ deletedCount: 1 });
     wishlistModel.deleteMany.mockResolvedValue({ deletedCount: 1 });
@@ -261,13 +259,7 @@ describe("dashboard and catalog controllers", () => {
     expect(wishlistModel.deleteMany).toHaveBeenCalledWith({ productId: "product-1" });
     expect(bannerModel.deleteMany).toHaveBeenCalledWith({ productId: "product-1" });
     expect(res.status).toHaveBeenCalledWith(200);
-
-    delete process.env.MEDIA_STORAGE;
-    delete process.env.CLOUDFLARE_R2_ACCOUNT_ID;
-    delete process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
-    delete process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
-    delete process.env.CLOUDFLARE_R2_BUCKET;
-    delete process.env.CLOUDFLARE_R2_PUBLIC_URL;
+    expect(mockCloudinary.uploader.destroy).toHaveBeenCalledTimes(3);
   });
 
   test("delete_product returns 500 and skips cascade when the database delete fails", async () => {
