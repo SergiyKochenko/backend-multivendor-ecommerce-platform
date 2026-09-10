@@ -31,10 +31,21 @@ jest.mock("../models/productModel", () => ({
 }));
 jest.mock("../models/bannerModel", () => ({
   create: jest.fn(),
+  find: jest.fn(),
   findOne: jest.fn(),
   findById: jest.fn(),
   findByIdAndUpdate: jest.fn(),
+  deleteMany: jest.fn(),
   aggregate: jest.fn(),
+}));
+jest.mock("../models/reviewModel", () => ({
+  deleteMany: jest.fn(),
+}));
+jest.mock("../models/cardModel", () => ({
+  deleteMany: jest.fn(),
+}));
+jest.mock("../models/wishlistModel", () => ({
+  deleteMany: jest.fn(),
 }));
 jest.mock("../models/myShopWallet", () => ({
   aggregate: jest.fn(),
@@ -67,6 +78,9 @@ jest.mock("../models/chat/sellerCustomerMessage", () => ({
 const categoryModel = require("../models/categoryModel");
 const productModel = require("../models/productModel");
 const bannerModel = require("../models/bannerModel");
+const reviewModel = require("../models/reviewModel");
+const cardModel = require("../models/cardModel");
+const wishlistModel = require("../models/wishlistModel");
 const myShopWallet = require("../models/myShopWallet");
 const customerOrder = require("../models/customerOrder");
 const sellerModel = require("../models/sellerModel");
@@ -217,6 +231,57 @@ describe("dashboard and catalog controllers", () => {
     expect(deleteRes.status).toHaveBeenCalledWith(200);
     expect(imageRes.status).toHaveBeenCalledWith(200);
     expect(addImageRes.status).toHaveBeenCalledWith(200);
+  });
+
+  test("delete_product cascades related records and cleans up Cloudflare R2 media", async () => {
+    process.env.MEDIA_STORAGE = "r2";
+    process.env.CLOUDFLARE_R2_ACCOUNT_ID = "account";
+    process.env.CLOUDFLARE_R2_ACCESS_KEY_ID = "key";
+    process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY = "secret";
+    process.env.CLOUDFLARE_R2_BUCKET = "bucket";
+    process.env.CLOUDFLARE_R2_PUBLIC_URL = "https://media.example.com";
+
+    productModel.findOne.mockResolvedValueOnce({
+      id: "product-1",
+      images: ["https://media.example.com/products/a.png", "https://media.example.com/products/b.png"],
+    });
+    productModel.deleteOne.mockResolvedValue({});
+    bannerModel.find.mockResolvedValue([{ banner: "https://media.example.com/banners/c.png" }]);
+    reviewModel.deleteMany.mockResolvedValue({ deletedCount: 2 });
+    cardModel.deleteMany.mockResolvedValue({ deletedCount: 1 });
+    wishlistModel.deleteMany.mockResolvedValue({ deletedCount: 1 });
+    bannerModel.deleteMany.mockResolvedValue({ deletedCount: 1 });
+
+    const res = createRes();
+    await productController.delete_product({ params: { productId: "product-1" }, id: "seller-1" }, res);
+
+    expect(productModel.deleteOne).toHaveBeenCalledWith({ _id: "product-1" });
+    expect(reviewModel.deleteMany).toHaveBeenCalledWith({ productId: "product-1" });
+    expect(cardModel.deleteMany).toHaveBeenCalledWith({ productId: "product-1" });
+    expect(wishlistModel.deleteMany).toHaveBeenCalledWith({ productId: "product-1" });
+    expect(bannerModel.deleteMany).toHaveBeenCalledWith({ productId: "product-1" });
+    expect(res.status).toHaveBeenCalledWith(200);
+
+    delete process.env.MEDIA_STORAGE;
+    delete process.env.CLOUDFLARE_R2_ACCOUNT_ID;
+    delete process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+    delete process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY;
+    delete process.env.CLOUDFLARE_R2_BUCKET;
+    delete process.env.CLOUDFLARE_R2_PUBLIC_URL;
+  });
+
+  test("delete_product returns 500 and skips cascade when the database delete fails", async () => {
+    productModel.findOne.mockResolvedValueOnce({ id: "product-1", images: ["a.png"] });
+    bannerModel.find.mockResolvedValueOnce([]);
+    productModel.deleteOne.mockRejectedValueOnce(new Error("database unavailable"));
+
+    const res = createRes();
+    await productController.delete_product({ params: { productId: "product-1" }, id: "seller-1" }, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(reviewModel.deleteMany).not.toHaveBeenCalled();
+    expect(cardModel.deleteMany).not.toHaveBeenCalled();
+    expect(wishlistModel.deleteMany).not.toHaveBeenCalled();
   });
 
   test("covers product alternate branches", async () => {

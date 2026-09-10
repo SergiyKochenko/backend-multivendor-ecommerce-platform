@@ -2,6 +2,10 @@ const formidable = require("formidable");
 const { responseReturn } = require("../../utiles/response");
 const productModel = require("../../models/productModel");
 const sellerModel = require("../../models/sellerModel");
+const reviewModel = require("../../models/reviewModel");
+const cardModel = require("../../models/cardModel");
+const wishlistModel = require("../../models/wishlistModel");
+const bannerModel = require("../../models/bannerModel");
 const {
   createMediaKey,
   deleteMedia,
@@ -193,23 +197,62 @@ class productController {
   delete_product = async (req, res) => {
     const { productId } = req.params;
     const { id } = req; // seller id from auth middleware
+    let product;
+
     try {
-      const product = await productModel.findOne({ _id: productId, sellerId: id });
+      product = await productModel.findOne({ _id: productId, sellerId: id });
       if (!product) {
         return responseReturn(res, 404, { error: 'Product not found or unauthorized' });
       }
-      await productModel.deleteOne({ _id: productId });
-      for (const image of product.images || []) {
-        try {
-          await deleteMediaIfUnreferenced(image);
-        } catch (cleanupError) {
-          console.error("Unable to clean up a deleted product image:", cleanupError.message);
-        }
-      }
-      responseReturn(res, 200, { message: 'Product deleted successfully' });
     } catch (error) {
-      responseReturn(res, 500, { error: error.message });
+      console.error(`Failed to look up product ${productId} before deletion:`, error.message);
+      return responseReturn(res, 500, { error: error.message });
     }
+
+    // Gather banner images tied to this product so they can be cleaned up alongside the product images.
+    let banners = [];
+    try {
+      banners = (await bannerModel.find({ productId })) || [];
+    } catch (error) {
+      console.error(`Failed to look up banners for product ${productId}:`, error.message);
+    }
+
+    try {
+      await productModel.deleteOne({ _id: productId });
+    } catch (error) {
+      console.error(`Failed to delete product ${productId} from the database:`, error.message);
+      return responseReturn(res, 500, { error: error.message });
+    }
+
+    // Remove dependent records so nothing references the deleted product.
+    const cascadeDeletes = [
+      ["reviews", () => reviewModel.deleteMany({ productId })],
+      ["cart items", () => cardModel.deleteMany({ productId })],
+      ["wishlist entries", () => wishlistModel.deleteMany({ productId })],
+      ["banners", () => bannerModel.deleteMany({ productId })],
+    ];
+    for (const [label, run] of cascadeDeletes) {
+      try {
+        await run();
+      } catch (error) {
+        console.error(`Failed to delete ${label} for product ${productId}:`, error.message);
+      }
+    }
+
+    // Delete every product image from Cloudflare R2, unless another record still references it.
+    const mediaUrls = [
+      ...(product.images || []),
+      ...banners.map((banner) => banner.banner).filter(Boolean),
+    ];
+    for (const url of mediaUrls) {
+      try {
+        await deleteMediaIfUnreferenced(url);
+      } catch (cleanupError) {
+        console.error(`Failed to delete media "${url}" for product ${productId} from Cloudflare R2:`, cleanupError.message);
+      }
+    }
+
+    responseReturn(res, 200, { message: 'Product deleted successfully' });
   };
 
   // End Method
